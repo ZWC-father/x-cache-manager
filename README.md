@@ -17,7 +17,7 @@ And is also suitable for other static content caching replacement.
 
 ## Features
 - Using unix domain socket to collect access log (nginx should be configured with json log format)
-- Based on LRU/LFUDA or [WGDSF](https://ieeexplore.ieee.org/document/8258989) algorithm to determine the popularity of the resource
+- Based on LRU/LFUDA algorithm to determine the popularity of the resource
 - Multiple groups of caching profiles for different kind of **static** content
 - Using ngx_cache_purge to purge the unused cache (thirdparty)
 - Fast caching replacememt for tightly limited disk space
@@ -27,7 +27,6 @@ And is also suitable for other static content caching replacement.
 - Basic function
 - Automatically gathering Project/Package info for better evaluation (for PyPi/Anaconda mirror)
 - Support purging file directly from filesystem (not relying on ngx_cache_purge)
-- Develop a more stable purger
 - Automatically check the validity of cached resource
-- Support multiple use cases and webserver
+- More powerful caching replacement algorithm
 - Dynamic loading configuration
