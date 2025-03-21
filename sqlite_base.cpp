@@ -28,21 +28,20 @@ void SQLiteBase::sqlite3_pre(const char* sql, sqlite3_stmt** stmt){
     }
 }
 
-void SQLiteBase::sqlite3_final(int res, sqlite3_stmt** stmt){
-    if(res != SQLITE_DONE && res != SQLITE_ROW){
-        sqlite3_finalize(*stmt);
+void SQLiteBase::sqlite3_final(sqlite3_stmt** stmt){
+    if(sqlite3_finalize(*stmt) != SQLITE_OK){
         throw SQLiteError("sql finalize failed: " + std::string(sqlite3_errmsg(db)));
     }
-    sqlite3_finalize(*stmt);
 }
 
-void SQLiteBase::execute(const char *sql) {
+int SQLiteBase::execute(const char *sql) {
     char *err = nullptr;
     if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK){
         std::string error = err ? err : "unknown error";
         sqlite3_free(err);
-        throw SQLiteError("sql error: " + error);
-     }
+        throw SQLiteError("simple sql error: " + error);
+    }
+    return sqlite3_changes(db);
 }
 
 /*------------- Bind Value -------------*/
@@ -69,5 +68,17 @@ void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::string& va
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::vector<char>& value){
     sqlite3_bind_blob(stmt, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
-
+/*
+void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, std::nullptr_t value){
+    sqlite3_bind_null(stmt, index);
+}
+*/
 /*----------- End Bind Value -----------*/
+
+void SQLiteBase::perror(int res, sqlite3_stmt** stmt){
+    if(res != SQLITE_OK && res != SQLITE_ROW && res != SQLITE_DONE){
+        sqlite3_finalize(*stmt);
+        throw SQLiteError("sql execute error: " + std::string(sqlite3_errmsg(db)));
+    }
+}
+
