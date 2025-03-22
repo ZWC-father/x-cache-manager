@@ -104,7 +104,9 @@ private:
 
     template<typename T>
     static T get_column_value(sqlite3_stmt* stmt, int col){
-        if constexpr(std::is_same_v<T, int>){
+        if constexpr(std::is_null_pointer_v<T>){
+            return nullptr;
+        }else if constexpr(std::is_same_v<T, int>){
             return sqlite3_column_int(stmt, col);
         }else if constexpr(std::is_same_v<T, int64_t>){
             return sqlite3_column_int64(stmt, col);
@@ -143,6 +145,7 @@ private:
     void bind_value(sqlite3_stmt* stmt, int index, double value);
     void bind_value(sqlite3_stmt* stmt, int index, const std::string& value);
     void bind_value(sqlite3_stmt* stmt, int index, const std::vector<char>& value);
+    void bind_value(sqlite3_stmt* stmt, int index, std::nullptr_t value);
 //    void bind_value(sqlite3_stmt* stmt, int index, std::nullptr_t value);
 
 };

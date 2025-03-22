@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <tuple>
 #include <vector>
 #include <iostream>
@@ -8,12 +9,17 @@
 #include "sql_statement.h"
 
 class SQLiteLRU : public SQLiteBase {
+public:
     struct CacheLRU{
         std::string key;
         size_t size;
         uint64_t download_time;
         std::vector<char> hash;
         int64_t sequence;
+        
+        CacheLRU(const std::string& key, size_t size, uint64_t download_time,
+                 const std::vector<char> hash, int64_t sequence) : key(key), size(size),
+                 download_time(download_time), hash(hash), sequence(sequence) {}
     };
     
     SQLiteLRU(const std::string& work_dir, const std::string& db_name) :
@@ -29,34 +35,36 @@ class SQLiteLRU : public SQLiteBase {
     }
 
     int update_content(const std::string& key, size_t size){
-        return execute(SQL_UPDATE_LRU_CONTENT, key, size);
+        return execute(SQL_UPDATE_LRU_CONTENT, size, key);
     }
 
     int count(const std::string& key){
         return query_num(SQL_QUERY_NUM_LRU, key);
     }
 
-    template<typename... Ts>
     std::vector<CacheLRU> query_all(){
-        std::vector<std::tuple<Ts...>> raw_data = query(SQL_QUERY_ALL_LRU);
+        auto raw_data = query<std::string, size_t, uint64_t,
+                              std::vector<char>, int64_t>(SQL_QUERY_ALL_LRU);
         std::vector<CacheLRU> data;//add memory optimization
         while(raw_data.size()){
-            data.emplace_back(std::make_from_tuple<Ts...>(raw_data.back));
+            data.push_back(std::make_from_tuple<CacheLRU>(raw_data.back()));
             raw_data.pop_back();
         }
         return data;
     }
     
-    template<typename... Ts>
     CacheLRU delete_old(){
-        std::tuple<Ts...> raw_entry = query_single(SQL_DELETE_OLD_LRU);
-        return std::make_from_tuple<Ts...>(raw_entry);
+        auto raw_entry = query_single<std::string, size_t,
+                                      uint64_t, std::vector<char>,
+                                      int64_t>(SQL_DELETE_OLD_LRU);
+        return std::make_from_tuple<CacheLRU>(raw_entry);
     }
     
-    template<typename... Ts>
     CacheLRU delete_any(const std::string& key){
-        std::tuple<Ts...> raw_entry = query_single(SQL_DELETE_ANY_LRU, key);
-        return std::make_from_tuple<Ts...>(raw_entry);
+        auto raw_entry = query_single<std::string, size_t,
+                                      uint64_t, std::vector<char>,
+                                      int64_t>(SQL_DELETE_ANY_LRU, key);
+        return std::make_from_tuple<CacheLRU>(raw_entry);
     }
     
 };

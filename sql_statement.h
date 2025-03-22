@@ -48,7 +48,7 @@
 
 #define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU;"
 
-#define SQL_DELETE_OLD_LRU "DELETE FROM " \
+#define SQL_DELETE_OLD_LRU "DELETE FROM cacheLRU " \
                            "WHERE key = ( " \
                            "SELECT key FROM cacheLRU " \
                            "ORDER BY sequence ASC " \

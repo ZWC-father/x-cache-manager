@@ -7,6 +7,7 @@ SQLiteBase::SQLiteBase(const std::string& work_dir, const std::string& db_name){
     }
     
     db_path = work_dir.back() == '/' ? work_dir : work_dir + '/';
+    db_path += db_name;
 }
 
 SQLiteBase::~SQLiteBase(){
@@ -68,6 +69,11 @@ void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::string& va
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::vector<char>& value){
     sqlite3_bind_blob(stmt, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
+
+void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, std::nullptr_t value){
+    sqlite3_bind_null(stmt, index);
+}
+
 /*
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, std::nullptr_t value){
     sqlite3_bind_null(stmt, index);
