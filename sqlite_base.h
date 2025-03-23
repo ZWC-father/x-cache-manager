@@ -24,7 +24,8 @@ public:
     bool open();
     
     int execute(const char* sql);//must be non-query and single-step sql
-    
+    int execute_noexcept(const char* sql);
+
     template<typename... Args>
     int execute(const char* sql, Args&&... args){ // should be non_query sql
         sqlite3_stmt* stmt = nullptr;    
@@ -62,7 +63,7 @@ public:
         sqlite3_pre(sql, &stmt);
 
         int res, index = 1;
-        std::tuple<Ts...> result = {};
+        std::tuple<Ts...> result{};
         ((bind_value(stmt, index++, std::forward<Args>(args))), ...);
         perror(res = sqlite3_step(stmt), &stmt);
         

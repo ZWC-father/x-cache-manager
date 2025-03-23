@@ -1,6 +1,7 @@
 #include "db_sqlite_lru.h"
 
 int main(int argc, char** argv){
+/*
     std::vector<char>tmp;
     tmp.push_back(40);
     SQLiteLRU* db = new SQLiteLRU(std::string("."), std::string("cache.db"));
@@ -39,11 +40,17 @@ int main(int argc, char** argv){
     
     
 
-
+*/
 //    std::get<DB::CacheLRU>(cache).key = std::string("test2");
 //    db.insert(cache);
 //    db.update(std::string("Test"), 10);
-
+    SQLiteLRU* db = new SQLiteLRU(std::string("."), std::string("cache.db"));
+    SQLiteLRU::MetaLRU meta1 = {15, 30, 1};
+    db->insert_meta(meta1);
+    auto tmp = db->query_meta();
+    std::cout << tmp.cache_size << tmp.max_size << tmp.sequence << std::endl;
+    meta1.cache_size = 10;
+    db->update_meta(meta1);
     return 0;
 
 }

@@ -1,4 +1,5 @@
 #include "async_deleter.h"
+#include <filesystem>
 
 AsyncDeleter::AsyncDeleter(size_t thr, FailCallback cb) : threads(thr),
 fail_callback(cb), running_threads(0), working_jobs(0), work_guard(nullptr) {}
@@ -61,7 +62,7 @@ void AsyncDeleter::submit(const std::string& file){
     asio::post(io, [this, file](){
             std::error_code ec;
             try{
-                if(!fs::remove(file, ec)){
+                if(!fs::remove_all(file, ec)){
                     fail_callback(file, ec);
                 }
             }catch(const std::exception& e){

@@ -3,7 +3,6 @@
 #include <functional>
 #include <iostream>
 #include <list>
-#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -26,11 +25,10 @@ public:
     };
     using RemoveCallback = std::function<void(std::vector<Cache>)>;
     using Iter = std::list<Cache>::iterator;
-    LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb);
+    LRU(SQLiteLRU* db, size_t size, RemoveCallback cb);
     ~LRU() = default;
     
     std::vector<Cache> backup();
-    void init();
     bool put(const Cache& cache);
     bool renew(const std::string& key);
     bool update(const std::string& key, size_t size);
@@ -39,8 +37,8 @@ public:
     void display() const;
 
 private:
-    SQLiteLRU::MetaLRU meta_lru;
-    std::shared_ptr<SQLiteLRU> db_sqlite;
+    size_t max_size, cache_size;
+    int64_t now_id;
     RemoveCallback remove_callback;
 
     std::list<Cache> cache_list;

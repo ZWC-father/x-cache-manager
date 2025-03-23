@@ -45,6 +45,17 @@ int SQLiteBase::execute(const char *sql) {
     return sqlite3_changes(db);
 }
 
+int SQLiteBase::execute_noexcept(const char *sql) {
+    char *err = nullptr;
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK){
+        std::string error = err ? err : "unknown error";
+        sqlite3_free(err);
+        std::cerr << "simple sql error (noexcept): " + error << std::endl;
+        return -1;
+    }
+    return sqlite3_changes(db);
+}
+
 /*------------- Bind Value -------------*/
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, int value){
     sqlite3_bind_int(stmt, index, value);

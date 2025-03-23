@@ -1,20 +1,16 @@
 #include "algo_lru_sqlite.h"
+#include <memory>
 
-LRU::LRU(size_t size, RemoveCallback cb) :
-         max_size(size), cache_size(0), now_id(0), remove_callback(cb){
-    if(max_size == 0)throw AlgoErrorLRU("max_size must not be zero");
-}
+LRU::LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb) :
+db_sqlite(db), remove_callback(cb),
+meta_lru({0, 0, 0}) {}
 
-void LRU::init(std::vector<Cache>&& caches){
-    while(caches.size()){
-        cache_list.push_front(caches.back());
-        cache_map[caches.back().key] = cache_list.begin();
-        cache_size += caches.back().size;
-        caches.pop_back();
-    }
-    if(cache_size > max_size){
-        std::cerr << "warning: reach the size limit while init" << std::endl;
-//      remove_cache(0);
+void LRU::init(){ //data validation should before the construction of LRU
+    meta_lru = db_sqlite->query_meta();
+    if(meta_lru.max_size == 0)throw AlgoErrorLRU("max_size must not be zero");
+    if(meta_lru.cache_size > meta_lru.max_size){
+        std::cerr << "warning: reach the size limit while init, removing..." << std::endl;
+        remove_cache(0);
     }
 }
 

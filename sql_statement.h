@@ -15,9 +15,10 @@
 
 #define SQL_UPDATE_METALRU "UPDATE metaLRU " \
                            "SET cache_size = ?, max_size = ?, " \
-                           "max_sequence WHERE id = 1;"
+                           "max_sequence = ? WHERE id = 1;"
 
-#define SQL_QUERY_METALRU "SELECT * FROM metaLRU;"
+#define SQL_QUERY_METALRU "SELECT cache_size, max_size, " \
+                          "max_sequence FROM metaLRU;"
 
 /*------------------------------------------------------------------*/
 #define SQL_CREATE_LRU "CREATE TABLE cacheLRU (" \
@@ -43,8 +44,11 @@
 #define SQL_UPDATE_LRU_CONTENT "UPDATE cacheLRU " \
                                "SET size = ? WHERE key = ?;"
 
-#define SQL_QUERY_NUM_LRU "SELECT COUNT(*) FROM cacheLRU "\
+#define SQL_QUERY_NUM_LRU "SELECT COUNT(*) FROM cacheLRU " \
                           "WHERE key = ?;"
+
+#define SQL_QUERY_OLD_LRU "SELECT * FROM cacheLRU " \
+                          "ORDER BY sequence DESC LIMIT 1;"
 
 #define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU;"
 
