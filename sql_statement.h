@@ -41,10 +41,17 @@
                        "hash, sequence) " \
                        "VALUES (?, ?, ?, ?, ?);"
 
+#define SQL_UPDATE_LRU "UPDATE cacheLRU " \
+                       "SET sequence = ? " \
+                       "WHERE key = ?;"
+
 #define SQL_UPDATE_LRU_CONTENT "UPDATE cacheLRU " \
                                "SET size = ? WHERE key = ?;"
 
 #define SQL_QUERY_NUM_LRU "SELECT COUNT(*) FROM cacheLRU " \
+                          "WHERE key = ?;"
+
+#define SQL_QUERY_ONE_LRU "SELECT * FROM cacheLRU " \
                           "WHERE key = ?;"
 
 #define SQL_QUERY_OLD_LRU "SELECT * FROM cacheLRU " \

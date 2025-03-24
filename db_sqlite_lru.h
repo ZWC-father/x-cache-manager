@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <execution>
 #include <tuple>
 #include <vector>
 #include <iostream>
@@ -45,16 +46,29 @@ public:
         return execute(SQL_INSERT_METALRU, entry.cache_size, entry.max_size, entry.sequence);
     }
 
+    int update_seq(const std::string& key, int64_t sequence){
+        return execute(SQL_UPDATE_LRU, sequence, key);
+    }
+
     int update_content(const std::string& key, size_t size){
         return execute(SQL_UPDATE_LRU_CONTENT, size, key);
     }
 
     int update_meta(const MetaLRU& entry){
         return execute(SQL_UPDATE_METALRU, entry.cache_size, entry.max_size, entry.sequence);
-    } 
+    }
+
+    
 
     int count(const std::string& key){
         return query_num(SQL_QUERY_NUM_LRU, key);
+    }
+
+    CacheLRU query_one(const std::string& key){
+        auto raw_entry = query_single<std::string, size_t,
+                                      uint64_t, std::vector<char>,
+                                      int64_t>(SQL_QUERY_ONE_LRU, key);
+        return std::make_from_tuple<CacheLRU>(raw_entry);
     }
 
     CacheLRU query_old(){
