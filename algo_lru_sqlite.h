@@ -22,7 +22,7 @@ public:
     using RemoveCallback = std::function<void(std::vector<Cache>)>;
     using Iter = std::list<Cache>::iterator;
     LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb);
-    ~LRU() = default;
+    ~LRU();
     
     void init();
     void backup();

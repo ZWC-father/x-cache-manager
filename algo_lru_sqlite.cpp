@@ -5,6 +5,10 @@ LRU::LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb) :
 db_sqlite(db), remove_callback(cb),
 meta_lru({0, 0, 0}) {}
 
+LRU::~LRU(){
+    backup();
+}
+
 void LRU::init(){ //data validation should before the construction of LRU
     meta_lru = db_sqlite->query_meta();
     if(meta_lru.max_size == 0)throw AlgoErrorLRU("max_size must not be zero");
