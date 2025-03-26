@@ -1,9 +1,4 @@
 #include "redis_base.h"
-#include <cstdio>
-#include <hiredis/hiredis.h>
-#include <hiredis/read.h>
-#include <string>
-#include <system_error>
 
 RedisBase::RedisBase(const std::string& h, int p = PORT, 
 const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME,
@@ -24,48 +19,68 @@ redis_opt({0}), redis_ctx(NULL){
 
 }
 
+RedisBase::~RedisBase(){
+    disconnect();
+}
+
 void RedisBase::connect(){
-    reset_count();
+    std::cout << "connecting..." << std::endl;
     if(redis_ctx != NULL){
-        throw RedisError("connecting error: not a null context before connecting");
+        throw RedisError("connecting error: context not null before new connecting");
     }
     
-    do_redis([this](){
+    for(int i = 1; i <= max_retries; i++){
         redis_ctx = redisConnectWithOptions(&redis_opt);
         if(redis_ctx == NULL){
-            throw RedisError("fatal: can't allocate redis context");
-        }
-        if(redis_ctx->err)perror("connecting error: ");
-    });
+            throw RedisError("fatal: can't allocate context");
+        }else if(redis_ctx->err){
+            proc_error(i < max_retries, "connecting error: ");
+        }else break;
+        
+        std::this_thread::sleep_for(retry_interval);
+        std::cerr << "connecting retry: #" << i << std::endl;
+    }
 
     if(redisEnableKeepAliveWithInterval(redis_ctx, alive_interval) != REDIS_OK){
-        perror("setting socket error: ");
+        proc_error(EXCEPT_NO_THROW, "setting socket error: ");
     }
 }
 
 void RedisBase::disconnect(){
-    reset_count();
+    std::cout << "disconnected" << std::endl;
     redisFree(redis_ctx);
 }
 
 void RedisBase::reconnect(){
-    if(redisReconnect(redis_ctx) != REDIS_OK){
-        perror("reconnecting error: ");
+    std::cout << "reconnecting..."  << std::endl;
+    if(redis_ctx == NULL){
+        throw RedisError("reconnecting error: context is null before reconnecting");
+    }
+    
+    for(int i = 1; i <= max_retries; i++){
+        if(redisReconnect(redis_ctx) != REDIS_OK){
+            proc_error(i < max_retries, "reconnecting error: ");
+        }else break;
+
+        std::this_thread::sleep_for(retry_interval);
+        std::cerr << "reconnecting retry: #" << i << std::endl;
     }
 }
 
-void RedisBase::perror(const std::string& error_msg){
-    error_count.add(redis_ctx->err);
+void RedisBase::proc_error(bool no_throw, const std::string& error_pre){
+    std::string error_msg;
+    
     if(redis_ctx->err == REDIS_ERR_IO){
-        throw RedisError(error_msg + "io error(" +
-                         std::to_string(errno) + ')');
+        error_msg = error_pre + "io error(" + std::to_string(errno) + ')';
     }else if(redis_ctx->err){
-        throw RedisError(error_msg + redis_ctx->errstr);
+        error_msg = error_pre + redis_ctx->errstr;
     }else{
-        throw RedisError(error_msg + "unknown error");
+        error_msg = error_pre + "unknown error";
     }
+
+    if(no_throw)std::cerr << error_msg << std::endl;
+    else throw RedisError(error_msg);
 }
 
-void RedisBase::reset_count(){
-    error_count = {0, 0, 0, 0};
-}
+
+

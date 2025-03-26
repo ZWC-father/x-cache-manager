@@ -1,6 +1,10 @@
 #include <chrono>
+#include <format>
 #include <hiredis/read.h>
 #include <iostream>
+#include <iterator>
+#include <string>
+#include <thread>
 #include <mutex>
 #include <ratio>
 #include <stdexcept>
@@ -8,6 +12,9 @@
 #include <functional>
 #include <utility>
 #include <hiredis/hiredis.h>
+
+#define EXCEPT_THROW 0
+#define EXCEPT_NO_THROW 1
 
 #define PORT 6379
 #define SRC_ADDR "127.0.0.1"
@@ -24,23 +31,17 @@ public:
 
 class RedisBase{
 public:
-    struct ErrorCount{
-        int io_error, eof_error, timeout_error, other_error;
-        void add(int error_flag){
-            if(error_flag == REDIS_ERR_IO)io_error++;
-            else if(error_flag == REDIS_ERR_EOF)eof_error++;
-            else if(error_flag == REDIS_ERR_TIMEOUT)timeout_error++;
-            else other_error++;
-        }
-    }error_count;
-    
     RedisBase(const std::string& h, int p, const std::string& src_a, int con_t,
               int cmd_t, int al_int, int rt_int, int max_rt);
     ~RedisBase();
     
     void connect();
     void disconnect();
+    void reconnect();
 
+   
+    template<typename... Args>
+    void command()
 
 private:
     std::thread connect_daemo;
@@ -53,23 +54,29 @@ private:
     int alive_interval, max_retries;
     std::chrono::milliseconds retry_interval;
 
-    template<typename Fn>
-    auto do_redis(Fn&& fn)
-    -> decltype(fn()){
+    void proc_error(bool no_throw, const std::string& error_pre);
+
+    REDIS_REPLY_NIL
+    template<typename... Args>
+    redisReply* redis_command_impl(const char* cmd, const Args&&... args){
+        redisReply* reply;
         for(int i = 1; i <= max_retries; i++){
-            try{
-                return fn();
-            }catch(const RedisError& e){
-                std::cerr << e.what() << " (attempt #" << i <<
-                " failed)" << std::endl;
-                if(i == max_retries)throw;
-            }
+            reply = redisCommand(redis_ctx, cmd,
+                                 std::forward<Args>(args)...);
+            if(i == max_retries)return reply;
+            if(reply == NULL){
+                proc_error(EXCEPT_NO_THROW,
+                           "command error: "); 
+                if(redis_ctx->err == REDIS_ERR_EOF ||
+                   redis_ctx->err == REDIS_ERR_IO){
+                    std::cerr << "note: maybe connection problem" << std::endl;
+                    reconnect();
+                }
+            }else return reply;
             std::this_thread::sleep_for(retry_interval);
+            std::cerr << "command (" << cmd << ") retry: #" << i << std::endl;
+            
         }
     }
-    
-    void reconnect();
-    void perror(const std::string& error_msg);
-    void reset_count();
    
 };
