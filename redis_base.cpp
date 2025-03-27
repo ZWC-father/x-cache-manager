@@ -24,7 +24,7 @@ RedisBase::~RedisBase(){
 }
 
 void RedisBase::connect(){
-    std::cout << "connecting..." << std::endl;
+    std::cerr << "connecting..." << std::endl;
     if(redis_ctx != NULL){
         throw RedisError("connecting error: context not null before new connecting");
     }
@@ -34,7 +34,8 @@ void RedisBase::connect(){
         if(redis_ctx == NULL){
             throw RedisError("fatal: can't allocate context");
         }else if(redis_ctx->err){
-            proc_error(i < max_retries, "connecting error: ");
+            proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
+                       "connecting error: ");
         }else break;
         
         std::this_thread::sleep_for(retry_interval);
@@ -42,32 +43,35 @@ void RedisBase::connect(){
     }
 
     if(redisEnableKeepAliveWithInterval(redis_ctx, alive_interval) != REDIS_OK){
-        proc_error(EXCEPT_NO_THROW, "setting socket error: ");
+        proc_error(EXCEPT_PRINT, "setting socket error: ");
     }
+    std::cerr << "connected" << std::endl;
 }
 
 void RedisBase::disconnect(){
-    std::cout << "disconnected" << std::endl;
     redisFree(redis_ctx);
+    std::cerr << "disconnected" << std::endl;
 }
 
 void RedisBase::reconnect(){
-    std::cout << "reconnecting..."  << std::endl;
+    std::cerr << "reconnecting..."  << std::endl;
     if(redis_ctx == NULL){
         throw RedisError("reconnecting error: context is null before reconnecting");
     }
     
     for(int i = 1; i <= max_retries; i++){
         if(redisReconnect(redis_ctx) != REDIS_OK){
-            proc_error(i < max_retries, "reconnecting error: ");
+            proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
+                       "reconnecting error: ");
         }else break;
 
         std::this_thread::sleep_for(retry_interval);
         std::cerr << "reconnecting retry: #" << i << std::endl;
     }
+    std::cerr << "connected" << std::endl;
 }
 
-void RedisBase::proc_error(bool no_throw, const std::string& error_pre){
+std::string RedisBase::proc_error(int flag, const std::string& error_pre){
     std::string error_msg;
     
     if(redis_ctx->err == REDIS_ERR_IO){
@@ -78,9 +82,10 @@ void RedisBase::proc_error(bool no_throw, const std::string& error_pre){
         error_msg = error_pre + "unknown error";
     }
 
-    if(no_throw)std::cerr << error_msg << std::endl;
-    else throw RedisError(error_msg);
-}
+    if(flag & 1)std::cerr << error_msg << std::endl;
+    if(flag & 2)throw RedisError(error_msg);
 
+    return error_msg;
+}
 
 

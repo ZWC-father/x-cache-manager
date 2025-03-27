@@ -74,7 +74,7 @@ void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, double value){
 }
 
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::string& value){
-    sqlite3_bind_text(stmt, index, value.c_str(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
 
 void SQLiteBase::bind_value(sqlite3_stmt* stmt, int index, const std::vector<char>& value){
