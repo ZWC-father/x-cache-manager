@@ -2,6 +2,7 @@
 #include <format>
 #include <iostream>
 #include <iterator>
+#include <variant>
 #include <memory>
 #include <optional>
 #include <string>
@@ -55,8 +56,11 @@ public:
         int type;
         std::string msg;
     };
-    RedisBase(const std::string& h, int p, const std::string& src_a, int con_t,
-              int cmd_t, int al_int, int rt_int, int max_rt);
+    using Reply = std::unique_ptr<redisReply, redisReplyDelete>;
+
+    RedisBase(const std::string& h, int p = PORT, const std::string& src_a = SRC_ADDR,
+              int con_t = CONN_TIME, int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL,
+              int rt_int = RETRY_INTVL, int max_rt = MAX_RETRY);
     ~RedisBase();
     
     void connect();
@@ -67,11 +71,9 @@ public:
     //there is a connection/io issue (when the client can't get reply from server).
     //binary-safe: cmd is not binary-safe
     template<typename T, typename... Args>
-    std::variant<OtherType, T> command_single(const char* cmd, const Args&&... args){
+    std::variant<OtherType, T> command_single(const char* cmd, Args&&... args){
 
-        std::unique_ptr<redisReply, redisReplyDelete> reply;
-        reply = NULL;
-        redis_command_impl(reply, cmd, std::forward<Args>(args)...);
+        Reply reply = redis_command_impl(cmd, std::forward<Args>(args)...);
         
         if(reply == NULL){
             return (OtherType){TYPE_EXCEPT,
@@ -142,12 +144,14 @@ private:
     std::string proc_error(int flag, const std::string& error_pre);
 
     template<typename... Args>
-    void redis_command_impl(redisReply* reply,
-                            const char* cmd, const Args&&... args){
+    Reply redis_command_impl(const char* cmd, Args&&... args){
+        redisReply* reply;
         for(int i = 1; i <= max_retries; i++){
-            reply = redisCommand(redis_ctx, cmd,
-                                 std::forward<Args>(args)...);
-            if(reply != NULL)return;
+            reply = static_cast<redisReply*>(redisCommand(redis_ctx, cmd,
+                                             std::forward<Args>(args)...));
+            if(reply != NULL){
+                return Reply(reply, redisReplyDelete());
+            }
             
             proc_error(EXCEPT_PRINT, "command (" +
                        std::string(cmd) + ") error: "); 
@@ -159,11 +163,12 @@ private:
                            std::string(cmd) + ") error: ");  
             }
 
-            if(i == max_retries)return;
+            if(i == max_retries)break;
             
             std::this_thread::sleep_for(retry_interval);
             reconnect();
         }
+        return Reply(reply, redisReplyDelete());
     }
    
 };

@@ -1,10 +1,10 @@
 #include "redis_base.h"
 
-RedisBase::RedisBase(const std::string& h, int p = PORT, 
-const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME,
-int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL, int rt_int = RETRY_INTVL,
-int max_rt = MAX_RETRY) : host(h), port(p), source_addr(src_a),
-alive_interval(al_int), retry_interval(rt_int), max_retries(max_rt),
+RedisBase::RedisBase(const std::string& h, int p, 
+const std::string& src_a, int con_t, int cmd_t,
+int al_int, int rt_int, int max_rt) : host(h),
+port(p), source_addr(src_a), alive_interval(al_int),
+retry_interval(rt_int), max_retries(max_rt),
 redis_opt({0}), redis_ctx(NULL){
     
     redis_opt.options |= REDIS_OPT_PREFER_IP_UNSPEC;
@@ -50,6 +50,7 @@ void RedisBase::connect(){
 
 void RedisBase::disconnect(){
     redisFree(redis_ctx);
+    redis_ctx = NULL;
     std::cerr << "disconnected" << std::endl;
 }
 
