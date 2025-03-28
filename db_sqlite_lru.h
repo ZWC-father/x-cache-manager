@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <memory>
 #include <execution>
 #include <tuple>
 #include <vector>
@@ -9,7 +10,7 @@
 #include "sqlite_base.h"
 #include "sql_statement.h"
 
-class SQLiteLRU : public SQLiteBase {
+class SQLiteLRU : private SQLiteBase {
 public:
     struct CacheLRU{
         std::string key;
@@ -30,14 +31,21 @@ public:
         max_size(max_size), sequence(sequence) {}
     };
     
+    const bool is_new;
+
     SQLiteLRU(const std::string& work_dir, const std::string& db_name) :
-              SQLiteBase(work_dir, db_name){
-        if(open())execute(SQL_CHECK_LRU), execute(SQL_CHECK_METALRU);
-        else execute(SQL_CREATE_LRU), execute(SQL_CREATE_METALRU);
+              SQLiteBase(work_dir, db_name), is_new(!open()){
+        if(is_new){
+            execute(SQL_CREATE_LRU);
+            execute(SQL_CREATE_METALRU);
+        }else{
+            execute(SQL_CHECK_LRU);
+            execute(SQL_CHECK_METALRU);
+        }
         execute(SQL_CREATE_INDEX_LRU);
     }
-    
-    int insert(const CacheLRU& entry){ //
+
+    int insert_lru(const CacheLRU& entry){ //
         return execute(SQL_INSERT_LRU, entry.key, entry.size, entry.download_time,
                 entry.hash, entry.sequence);
     }
@@ -46,11 +54,11 @@ public:
         return execute(SQL_INSERT_METALRU, entry.cache_size, entry.max_size, entry.sequence);
     }
 
-    int update_seq(const std::string& key, int64_t sequence){
-        return execute(SQL_UPDATE_LRU, sequence, key);
+    int update_lru_seq(const std::string& key, int64_t sequence){
+        return execute(SQL_UPDATE_LRU_SEQ, sequence, key);
     }
 
-    int update_content(const std::string& key, size_t size){
+    int update_lru_content(const std::string& key, size_t size){
         return execute(SQL_UPDATE_LRU_CONTENT, size, key);
     }
 
@@ -58,28 +66,33 @@ public:
         return execute(SQL_UPDATE_METALRU, entry.cache_size, entry.max_size, entry.sequence);
     }
 
-    
-
-    int count(const std::string& key){
-        return query_num(SQL_QUERY_NUM_LRU, key);
+    int query_lru_count(const std::string& key){
+        return SQLiteBase::query_count(SQL_QUERY_COUNT_LRU, key);
     }
 
-    CacheLRU query_one(const std::string& key){
+    CacheLRU query_lru_single(const std::string& key){
         auto raw_entry = query_single<std::string, size_t,
                                       uint64_t, std::vector<char>,
-                                      int64_t>(SQL_QUERY_ONE_LRU, key);
+                                      int64_t>(SQL_QUERY_SINGLE_LRU, key);
         return std::make_from_tuple<CacheLRU>(raw_entry);
     }
 
-    CacheLRU query_old(){
+    CacheLRU query_lru_old(){
         auto raw_entry = query_single<std::string, size_t,
                                       uint64_t, std::vector<char>,
                                       int64_t>(SQL_QUERY_OLD_LRU);
         return std::make_from_tuple<CacheLRU>(raw_entry);
     }
+    
+    CacheLRU query_lru_new(){
+        auto raw_entry = query_single<std::string, size_t,
+                                      uint64_t, std::vector<char>,
+                                      int64_t>(SQL_QUERY_NEW_LRU);
+        return std::make_from_tuple<CacheLRU>(raw_entry);
+    }
 
-    std::vector<CacheLRU> query_all(){
-        auto raw_data = query<std::string, size_t, uint64_t,
+    std::vector<CacheLRU> query_lru_all(){
+        auto raw_data = query_multi<std::string, size_t, uint64_t,
                               std::vector<char>, int64_t>(SQL_QUERY_ALL_LRU);
         std::vector<CacheLRU> data;//add memory optimization
         while(raw_data.size()){
@@ -95,17 +108,17 @@ public:
         return std::make_from_tuple<MetaLRU>(raw_entry);
     }
     
-    CacheLRU delete_old(){
+    CacheLRU delete_lru_single(const std::string& key){
+        auto raw_entry = query_single<std::string, size_t,
+                                      uint64_t, std::vector<char>,
+                                      int64_t>(SQL_DELETE_SINGLE_LRU, key);
+        return std::make_from_tuple<CacheLRU>(raw_entry);
+    }
+   
+    CacheLRU delete_lru_old(){
         auto raw_entry = query_single<std::string, size_t,
                                       uint64_t, std::vector<char>,
                                       int64_t>(SQL_DELETE_OLD_LRU);
-        return std::make_from_tuple<CacheLRU>(raw_entry);
-    }
-    
-    CacheLRU delete_any(const std::string& key){
-        auto raw_entry = query_single<std::string, size_t,
-                                      uint64_t, std::vector<char>,
-                                      int64_t>(SQL_DELETE_ANY_LRU, key);
         return std::make_from_tuple<CacheLRU>(raw_entry);
     }
     

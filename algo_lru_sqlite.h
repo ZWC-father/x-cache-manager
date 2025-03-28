@@ -25,7 +25,7 @@ public:
     ~LRU();
     
     void init();
-    void backup();
+    void backup() const;
     bool put(const Cache& cache);
     bool renew(const std::string& key);
     bool update_content(const std::string& key, size_t size);
@@ -34,8 +34,8 @@ public:
     void display() const;
 
 private:
+    mutable std::shared_ptr<SQLiteLRU> db_sqlite;
     SQLiteLRU::MetaLRU meta_lru;
-    std::shared_ptr<SQLiteLRU> db_sqlite;
     RemoveCallback remove_callback;
 
     void remove_cache(size_t required);

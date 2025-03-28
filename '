@@ -19,9 +19,6 @@ void LRU::init(){ //data validation should be performed before LRU
     if(entry.key.size() && entry.sequence != meta_lru.sequence){
         throw AlgoErrorLRU("init check failed: sequence mismatch");
     }
-    if(entry.key.size() && entry.size > meta_lru.cache_size){
-        throw AlgoErrorLRU("init check failed: cache_size mismatch");
-    }
 
     if(meta_lru.cache_size > meta_lru.max_size){
         std::cerr << "warning: reach the size limit while initializing, removing..." << std::endl;
@@ -29,7 +26,7 @@ void LRU::init(){ //data validation should be performed before LRU
     }
 }
 
-void LRU::backup() const{
+void LRU::backup(){
     db_sqlite->update_meta(meta_lru);
 }
 //TODO: backup per 100 operations
@@ -163,19 +160,13 @@ void LRU::display() const{
     std::cerr << "------- status -------\n";
     std::cerr << "total size: " << meta_lru.cache_size << '\n';
     std::cerr << "cache list (most recent first):\n";
-    auto data = db_sqlite->query_lru_all();
+    auto data = db_sqlite->query_all();
     for(auto it : data){
         std::cerr << "key: " << it.key << " size: " << it.size
         << " sequence: " << it.sequence << std::endl;
     }
-    
-    backup();
-    auto metadata = db_sqlite->query_meta();
-    std::cerr << "-------- meta --------\n";
-    std::cerr << "max sequence: " << metadata.sequence << " cache_size: "
-    << metadata.cache_size << " max_size: " << metadata.max_size << std::endl;
 }
 
 LRU::Cache LRU::query(const std::string& key) const{
-    return db_sqlite->query_lru_single(key);
+    return db_sqlite->query_one(key);
 }

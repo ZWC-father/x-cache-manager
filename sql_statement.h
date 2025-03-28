@@ -41,23 +41,30 @@
                        "hash, sequence) " \
                        "VALUES (?, ?, ?, ?, ?);"
 
-#define SQL_UPDATE_LRU "UPDATE cacheLRU " \
-                       "SET sequence = ? " \
-                       "WHERE key = ?;"
+#define SQL_UPDATE_LRU_SEQ "UPDATE cacheLRU " \
+                           "SET sequence = ? " \
+                           "WHERE key = ?;"
 
 #define SQL_UPDATE_LRU_CONTENT "UPDATE cacheLRU " \
                                "SET size = ? WHERE key = ?;"
 
-#define SQL_QUERY_NUM_LRU "SELECT COUNT(*) FROM cacheLRU " \
-                          "WHERE key = ?;"
+#define SQL_QUERY_COUNT_LRU "SELECT COUNT(*) FROM cacheLRU " \
+                            "WHERE key = ?;"
 
-#define SQL_QUERY_ONE_LRU "SELECT * FROM cacheLRU " \
-                          "WHERE key = ?;"
+#define SQL_QUERY_SINGLE_LRU "SELECT * FROM cacheLRU " \
+                             "WHERE key = ?;"
 
 #define SQL_QUERY_OLD_LRU "SELECT * FROM cacheLRU " \
                           "ORDER BY sequence DESC LIMIT 1;"
 
+#define SQL_QUERY_NEW_LRU "SELECT * FROM cacheLRU " \
+                          "ORDER BY sequence ASC LIMIT 1;"
+
 #define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU;"
+
+#define SQL_DELETE_SINGLE_LRU "DELETE FROM cacheLRU WHERE key = ? " \
+                              "RETURNING key, size, download_time, " \
+                              "hash, sequence;"
 
 #define SQL_DELETE_OLD_LRU "DELETE FROM cacheLRU " \
                            "WHERE key = ( " \
@@ -67,9 +74,6 @@
                            "RETURNING key, size, download_time " \
                            "hash, sequence;"
 
-#define SQL_DELETE_ANY_LRU "DELETE FROM cacheLRU WHERE key = ? " \
-                           "RETURNING key, size, download_time, " \
-                           "hash, sequence;"
 
 /*------------------------------------------------------------------*/
 #define SQL_CREATE_LFUDA "CREATE TABLE cacheLFUDA (" \

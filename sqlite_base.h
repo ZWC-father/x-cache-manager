@@ -41,16 +41,18 @@ public:
     }
     
     template<typename... Args>
-    int query_num(const char* sql, Args&&... args){
+    int query_count(const char* sql, Args&&... args){
         sqlite3_stmt* stmt = nullptr;
         sqlite3_pre(sql, &stmt);
         
         int res, index = 1, count = 0;
         (bind_value(stmt, index++, std::forward<Args>(args)), ...);
-        perror(res = sqlite3_step(stmt), &stmt);
+        res = sqlite3_step(stmt);
+        perror(res, &stmt);
         
         if(res == SQLITE_ROW)count = sqlite3_column_int(stmt, 0);
-        perror(res = sqlite3_step(stmt), &stmt);
+        res = sqlite3_step(stmt);
+        perror(res, &stmt);
         sqlite3_final(&stmt);
         
         if(res != SQLITE_DONE)throw SQLiteError("too many entries");
@@ -65,10 +67,12 @@ public:
         int res, index = 1;
         std::tuple<Ts...> result{};
         ((bind_value(stmt, index++, std::forward<Args>(args))), ...);
-        perror(res = sqlite3_step(stmt), &stmt);
+        res = sqlite3_step(stmt);
+        perror(res, &stmt);
         
         if(res == SQLITE_ROW)result = get_row<Ts...>(stmt);
-        perror(res = sqlite3_step(stmt), &stmt);
+        res = sqlite3_step(stmt);
+        perror(res, &stmt);
         sqlite3_final(&stmt);
         
         if(res != SQLITE_DONE)throw SQLiteError("too many entries");
@@ -76,7 +80,7 @@ public:
     }
 
     template<typename... Ts, typename... Args>
-    std::vector<std::tuple<Ts...>> query(const char* sql, Args&&... args){
+    std::vector<std::tuple<Ts...>> query_multi(const char* sql, Args&&... args){
         sqlite3_stmt* stmt = nullptr;
         sqlite3_pre(sql, &stmt);
 
