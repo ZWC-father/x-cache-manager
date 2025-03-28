@@ -1,5 +1,6 @@
 #include <chrono>
 #include <format>
+#include <hiredis/read.h>
 #include <iostream>
 #include <iterator>
 #include <variant>
@@ -166,6 +167,7 @@ private:
             if(i == max_retries)break;
             
             std::this_thread::sleep_for(retry_interval);
+            if(redis_ctx->err == REDIS_ERR_TIMEOUT)continue;
             reconnect();
         }
         return Reply(reply, redisReplyDelete());
