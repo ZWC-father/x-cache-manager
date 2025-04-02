@@ -20,7 +20,7 @@ public:
         int64_t sequence;
         
         CacheLRU(const std::string& key, size_t size, uint64_t download_time,
-                 const std::vector<char> hash, int64_t sequence) : key(key), size(size),
+                 const std::vector<char> &hash, int64_t sequence = 0) : key(key), size(size),
                  download_time(download_time), hash(hash), sequence(sequence) {}
     };
 

@@ -28,7 +28,7 @@ public:
     void backup() const;
     bool put(const Cache& cache);
     bool renew(const std::string& key);
-    bool update_content(const std::string& key, size_t size);
+    bool update(const std::string& key, size_t size);
     void resize(size_t new_size);
     Cache query(const std::string& key) const;
     void display() const;
@@ -38,7 +38,7 @@ private:
     SQLiteLRU::MetaLRU meta_lru;
     RemoveCallback remove_callback;
 
-    void remove_cache(size_t required);
+    bool remove_cache(size_t required, const std::string& mark = "");
     void update_size(Cache& cache, size_t size);
 };
 

@@ -1,5 +1,4 @@
 #include "sqlite_base.h"
-#include <filesystem>
 
 SQLiteBase::SQLiteBase(const std::string& work_dir, const std::string& db_name){
     if(!fs::exists(work_dir) || !fs::is_directory(work_dir)){

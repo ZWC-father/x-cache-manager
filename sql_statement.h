@@ -55,10 +55,10 @@
                              "WHERE key = ?;"
 
 #define SQL_QUERY_OLD_LRU "SELECT * FROM cacheLRU " \
-                          "ORDER BY sequence DESC LIMIT 1;"
+                          "ORDER BY sequence ASC LIMIT 1;"
 
 #define SQL_QUERY_NEW_LRU "SELECT * FROM cacheLRU " \
-                          "ORDER BY sequence ASC LIMIT 1;"
+                          "ORDER BY sequence DESC LIMIT 1;"
 
 #define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU;"
 
