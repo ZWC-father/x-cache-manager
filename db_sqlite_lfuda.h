@@ -37,9 +37,11 @@ public:
         cache_size(cache_size), max_size(max_size), global_aging(global_aging) {}
     };
     
-    struct TimeLFUDA{
+    struct TFE{
         std::string key;
         uint64_t timestamp;
+        uint64_t freq;
+        uint64_t eff;
     };
 
     const bool is_new;
@@ -92,9 +94,10 @@ public:
         return std::make_from_tuple<CacheLFUDA>(raw_entry);
     }
 
-    TimeLFUDA query_lfuda_time(const std::string& key){
-        auto entry = query_single<std::string, uint64_t>(SQL_QUERY_TIME_LFUDA, key);
-        return std::make_from_tuple<TimeLFUDA>(entry);
+    TFE query_lfuda_time(const std::string& key){
+        auto entry = query_single<std::string, uint64_t, uint64_t,
+                                  uint64_t>(SQL_QUERY_TFE_LFUDA, key);
+        return std::make_from_tuple<TFE>(entry);
     }
 
     CacheLFUDA query_lfuda_worst(){
@@ -109,7 +112,7 @@ public:
         auto raw_data = query_multi<std::string, size_t, uint64_t,
                                     std::vector<char>, uint64_t,
                                     uint64_t, uint64_t>(SQL_QUERY_ALL_LFUDA);
-        std::vector<CacheLFUDA> data;//TODO: add memory optimization
+        std::vector<CacheLFUDA> data;//TODO: memory optimization
         while(raw_data.size()){
             data.push_back(std::make_from_tuple<CacheLFUDA>(raw_data.back()));
             raw_data.pop_back();

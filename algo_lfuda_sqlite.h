@@ -38,7 +38,7 @@ public:
     void backup() const;
     bool put(const Cache& cache);
     bool renew(const std::string& key, uint64_t timestamp);
-    bool update(const std::string& key, size_t size);
+    bool update(const std::string& key, size_t new_size);
     void resize(size_t new_size);
     Cache query(const std::string& key) const;
     void display() const;
@@ -49,5 +49,5 @@ private:
     RemoveCallback remove_callback;
     
     bool remove_cache(size_t required, const std::string& mark = "");
-    void update_size(Cache& it, size_t size);
+    void update_size(Cache& it, size_t new_size);
 };

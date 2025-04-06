@@ -1,5 +1,4 @@
 #include "algo_lfuda_sqlite.h"
-#include <memory>
 
 LFUDA::LFUDA(std::shared_ptr<SQLiteLFUDA> db, RemoveCallback cb) :
 db_sqlite(db), remove_callback(cb),
@@ -58,14 +57,16 @@ bool LFUDA::put(const Cache& cache){
 
     std::cerr << "warning: cache already in database: " << cache.key << std::endl;
     
+    std::cerr << "warning: renew this cache" << std::endl;
+    if(!renew(entry.key, cache.timestamp)){
+        throw AlgoErrorLFUDA("db error: fatal logic error");
+    }
+    
     if(cache.size > entry.size){
         std::cerr << "warning: add duplicate cache, using the larger one" << std::endl;
         update_size(entry, cache.size);
     }
 
-    if(!renew(entry.key, cache.timestamp, )){
-        throw AlgoErrorLFUDA("db error: fatal logic error");
-    }
 
     return 0;
     
@@ -73,17 +74,18 @@ bool LFUDA::put(const Cache& cache){
 
 bool LFUDA::renew(const std::string& key, uint64_t timestamp){
     if(key.empty())throw AlgoErrorLFUDA("key must not be null");
+    
     auto entry = db_sqlite->query_lfuda_time(key);
     if(entry.key.size()){
         if(entry.timestamp <= timestamp){
             std::cerr << "warning: invalid timestamp: earlier than last access" << std::endl;
             timestamp = entry.timestamp;
         }
-        int changed = db_sqlite->update_lfuda_tfe(key, timestamp, uint64_t freq, uint64_t eff)
-    }
-
-    if(entry.key.size()){
-        update_size()
+        
+        entry.eff = ++entry.freq + meta_lfuda.global_aging;
+        if(!db_sqlite->update_lfuda_tfe(key, timestamp, entry.freq, entry.eff)){
+            throw AlgoErrorLFUDA("db error: fatal logic error");
+        }
         return 1;
     }
 
@@ -91,16 +93,15 @@ bool LFUDA::renew(const std::string& key, uint64_t timestamp){
     return 0;
 }
 
-bool LFUDA::update(const std::string& key, size_t size){
+bool LFUDA::update(const std::string& key, size_t new_size){
+    if(key.empty())throw AlgoErrorLFUDA("cache_key must not be null");
     if(new_size == 0 || new_size > meta_lfuda.max_size){
         throw AlgoErrorLFUDA("size must not be zero or greater than max_size");
     }
-    auto it = cache_map.find(key);
-    if(it != cache_map.end()){
-        if(size != it->second->size){
-            auto tmp = update_size(it->second, size);
-            cache_map[key] = tmp;
-        }
+    
+    auto entry = db_sqlite->query_lfuda_single(key);
+    if(entry.key.size()){
+        update_size(entry, new_size);
         return 1;
     }
 
@@ -110,51 +111,78 @@ bool LFUDA::update(const std::string& key, size_t size){
 
 void LFUDA::resize(size_t new_size){
     if(new_size == 0)throw AlgoErrorLFUDA("max_size must not be zero");
-    max_size = new_size;
+    meta_lfuda.max_size = new_size;
     remove_cache(0);
 }
 
-void LFUDA::remove_cache(size_t required){
+bool LFUDA::remove_cache(size_t required, const std::string& mark){
     std::vector<Cache> removed;
-    while(cache_map.size() && cache_size + required > max_size){
-        auto del_it = cache_bst.begin();
-        aging = del_it->eff;
-        cache_size -= del_it->size;
-        removed.push_back(*del_it);
-        cache_map.erase(del_it->key);
-        cache_bst.erase(del_it);
+    bool flag = 0;
+    while(meta_lfuda.cache_size + required > meta_lfuda.max_size){
+        auto entry = db_sqlite->delete_lfuda_old();
+        if(entry.key.empty()){
+            if(removed.size())remove_callback(removed);
+            throw AlgoErrorLFUDA("db error: cache_size mismatch or cache with empty key");
+        }
+        
+        if(meta_lfuda.cache_size >= entry.size){
+            meta_lfuda.cache_size -= entry.size;
+            meta_lfuda.global_aging = entry.eff;
+            removed.push_back(entry);
+        }else{
+            removed.push_back(entry);
+            remove_callback(removed);
+            throw AlgoErrorLFUDA("db error: cache_size mismatch");
+        }
+
+        flag |= (mark.size() && entry.key == mark);
     }
     
-    if(cache_map.empty())std::cerr << "no cache remained" << std::endl;
     if(removed.size())remove_callback(removed);
+    return flag;
 }
 
-LFUDA::Iter LFUDA::update_size(Iter it, size_t size){
-    if(size > it->size)remove_cache(size - it->size);
-        
-    cache_size -= it->size;
-    cache_size += size;
-    auto tmp = cache_bst.extract(it);
-    tmp.value().size = size;
-        
-    return cache_bst.insert(std::move(tmp)).position;
-    
+void LFUDA::update_size(Cache& cache, size_t new_size){
+    if(new_size == cache.size)return;
+    if(new_size > cache.size){
+        if(remove_cache(new_size - cache.size, cache.key)){
+            std::cerr << "warning: the target is removed due to insufficient space, abort updating" << std::endl;
+            return;
+        }
+    }
+
+    if(meta_lfuda.cache_size >= cache.size){
+        meta_lfuda.cache_size -= cache.size;
+    }else{
+        throw AlgoErrorLFUDA("db error: cache_size mismatch");
+    }
+    meta_lfuda.cache_size += new_size;
+
+    if(!db_sqlite->update_lfuda_content(cache.key, cache.size = new_size)){
+        throw AlgoErrorLFUDA("db error: fatal logic error");
+    }
 }
 
 void LFUDA::display() const{
     std::cerr << "------- status -------\n";
-    std::cerr << "total size: " << cache_size << '\n';
-    std::cerr << "global aging factor: " << aging << '\n';
-    std::cerr << "cache list (most popular first):\n";
-    for(auto it = cache_bst.rbegin(); it != cache_bst.rend(); it++){
-        std::cerr << "key: " << it->key << " size: " << it->size << " timestamp: "
-        << it->timestamp << " freq: " << it->freq << " eff_freq: " << it->eff << '\n';
+    std::cerr << "cache list:\n";
+    auto data = db_sqlite->query_lfuda_all();
+    for(auto it : data){
+        std::cerr << "key: " << it.key << " size: " << it.size << " timestamp: "
+        << it.timestamp << " freq: " << it.freq << " eff_freq: " << it.eff << '\n';
     }
-    std::cerr << std::endl;
+    
+    backup();
+    auto metadata = db_sqlite->query_meta();
+    std::cerr << "-------- meta --------\n";
+    std::cerr << "cache_size: " << metadata.cache_size << ", max_size: " <<
+    metadata.max_size << ", global_aging: " << metadata.global_aging << std::endl;
+
 }
 
 LFUDA::Cache LFUDA::query(const std::string& key) const{
-    auto it = cache_map.find(key);
-    if(it == cache_map.end())return {};
-    return *it->second;
+    if(key.empty())throw AlgoErrorLFUDA("key must not be null");
+    auto entry = db_sqlite->query_lfuda_single(key);
+    if(entry.key.empty())std::cerr << "warning: no such cache: " << key << std::endl;
+    return entry;
 }

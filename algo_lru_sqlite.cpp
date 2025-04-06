@@ -71,14 +71,16 @@ bool LRU::put(const Cache& cache){
     std::cerr << "warning: cache already in database: " << cache.key << std::endl;
     //Probable Cause: many concurrent requests to same source for the first time
     
+    std::cerr << "warning: renew this cache" << std::endl;
+    if(!renew(entry.key)){
+        throw AlgoErrorLRU("db error: fatal logic error");
+    }
+    
     if(cache.size > entry.size){
         std::cerr << "warning: add duplicate cache, using the larger one" << std::endl;
         update_size(entry, cache.size);
     }
 
-    if(!renew(entry.key)){
-        throw AlgoErrorLRU("db error: fatal logic error");
-    }
 
     return 0;
     
@@ -113,8 +115,7 @@ bool LRU::renew(const std::string& key){
    
 }
 /*
- * We must increase meta.sequence every time! or it will throw
- * an exception due to no row change
+ * We must increase meta.sequence every time! 
  */
 
 bool LRU::update(const std::string& key, size_t new_size){
@@ -189,8 +190,7 @@ void LRU::update_size(Cache& cache, size_t new_size){ //cache.size will be updat
 
 void LRU::display() const{
     std::cerr << "------- status -------\n";
-    std::cerr << "total size: " << meta_lru.cache_size << '\n';
-    std::cerr << "cache list (most recent first):\n";
+    std::cerr << "cache list:\n";
     auto data = db_sqlite->query_lru_all();
     for(auto it : data){
         std::cerr << "key: " << it.key << ", size: " << it.size

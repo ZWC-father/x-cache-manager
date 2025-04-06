@@ -136,8 +136,8 @@
 #define SQL_QUERY_SINGLE_LFUDA "SELECT * FROM cacheLFUDA " \
                                "WHERE key = ?;"
 
-#define SQL_QUERY_TIME_LFUDA "SELECT key, timestamp FROM cacheLFUDA " \
-                             "WHERE key = ?;"
+#define SQL_QUERY_TFE_LFUDA  "SELECT key, timestamp, freq, eff " \
+                             "FROM cacheLFUDA WHERE key = ?;"
 
 #define SQL_QUERY_WORST_LFUDA "SELECT * FROM cacheLFUDA " \
                               "ORDER BY eff ASC, freq ASC, " \
