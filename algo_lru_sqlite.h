@@ -19,8 +19,9 @@ public:
 class LRU{
 public:
     using Cache = SQLiteLRU::CacheLRU;
+    using Meta = SQLiteLRU::MetaLRU;
     using RemoveCallback = std::function<void(std::vector<Cache>)>;
-    using Iter = std::list<Cache>::iterator;
+    
     LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb);
     ~LRU();
     
@@ -35,7 +36,7 @@ public:
 
 private:
     mutable std::shared_ptr<SQLiteLRU> db_sqlite;
-    SQLiteLRU::MetaLRU meta_lru;
+    Meta meta_lru;
     RemoveCallback remove_callback;
 
     bool remove_cache(size_t required, const std::string& mark = "");

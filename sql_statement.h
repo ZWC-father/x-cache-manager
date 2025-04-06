@@ -1,6 +1,6 @@
 #define SQL_CREATE_METALRU "CREATE TABLE metaLRU (" \
                            "id INTEGER PRIMARY KEY CHECK (id = 1), " \
-                           "cache_size INTEGER, " \
+                           "cache_size INTEGER NOT NULL, " \
                            "max_size INTEGER NOT NULL, " \
                            "max_sequence INTEGER NOT NULL" \
                            ");"
@@ -41,11 +41,11 @@
                        "hash, sequence) " \
                        "VALUES (?, ?, ?, ?, ?);"
 
-#define SQL_UPDATE_LRU_SEQ "UPDATE cacheLRU " \
+#define SQL_UPDATE_SEQ_LRU "UPDATE cacheLRU " \
                            "SET sequence = ? " \
                            "WHERE key = ?;"
 
-#define SQL_UPDATE_LRU_CONTENT "UPDATE cacheLRU " \
+#define SQL_UPDATE_CONTENT_LRU "UPDATE cacheLRU " \
                                "SET size = ? WHERE key = ?;"
 
 #define SQL_QUERY_COUNT_LRU "SELECT COUNT(*) FROM cacheLRU " \
@@ -71,20 +71,46 @@
                            "SELECT key FROM cacheLRU " \
                            "ORDER BY sequence ASC " \
                            "LIMIT 1) " \
-                           "RETURNING key, size, download_time " \
+                           "RETURNING key, size, download_time, " \
                            "hash, sequence;"
 
+/*------------------------------------------------------------------*/
+#define SQL_CREATE_METALFUDA "CREATE TABLE metaLFUDA (" \
+                             "id INTEGER PRIMARY KEY CHECK (id = 1), " \
+                             "cache_size INTEGER NOT NULL, " \
+                             "max_size INTEGER NOT NULL, " \
+                             "global_aging INTEGER NOT NULL" \
+                             ");"
+
+#define SQL_CHECK_METALFUDA "SELECT name FROM sqlite_master " \
+                            "WHERE type = 'table' " \
+                            "AND name = 'metaLFUDA';"
+
+#define SQL_INSERT_METALFUDA "INSERT INTO metaLFUDA " \
+                             "(id, cache_size, max_size, " \
+                             "global_aging) VALUES (1, ?, ?, ?);"
+
+#define SQL_UPDATE_METALFUDA "UPDATE metaLFUDA " \
+                             "SET cache_size = ?, max_size = ?, " \
+                             "global_aging = ? WHERE id = 1;"
+
+#define SQL_QUERY_METALFUDA "SELECT cache_size, max_size, " \
+                            "global_aging FROM metaLFUDA;"
 
 /*------------------------------------------------------------------*/
 #define SQL_CREATE_LFUDA "CREATE TABLE cacheLFUDA (" \
                          "key TEXT PRIMARY KEY, " \
-                         "size INTEGER, " \
+                         "size INTEGER NOT NULL, " \
                          "download_time INTEGER, " \
                          "hash BLOB, " \
-                         "timestamp INTEGER, " \
-                         "freq INTEGER, " \
-                         "eff INTEGER" \
+                         "timestamp INTEGER NOT NULL, " \
+                         "freq INTEGER NOT NULL, " \
+                         "eff INTEGER NOT NULL" \
                          ");"
+
+#define SQL_CREATE_INDEX_LFUDA "CREATE INDEX IF NOT EXISTS indexLFUDA " \
+                               "ON cacheLFUDA(eff ASC, freq ASC, " \
+                               "timestamp ASC, size ASC);"
 
 #define SQL_CHECK_LFUDA "SELECT name FROM sqlite_master " \
                         "WHERE type = 'table' " \
@@ -95,9 +121,39 @@
                          "hash, timestamp, freq, eff) " \
                          "VALUES (?, ?, ?, ?, ?, ?, ?);"
 
-#define SQL_UPDATE_LFUDA_CONTENT "UPDATE cacheLFUDA " \
-                                 "SET size = ?, hash = ? " \
-                                 "WHERE key = ?;"
+//timestamp + freq + eff = TFE
+#define SQL_UPDATE_TFE_LFUDA "UPDATE cacheLFUDA " \
+                             "SET timestamp = ?, " \
+                             "freq = ?, eff = ? " \
+                             "WHERE key = ?;" \
+
+#define SQL_UPDATE_CONTENT_LFUDA "UPDATE cacheLFUDA " \
+                                 "SET size = ?, WHERE key = ?;"
+
+#define SQL_QUERY_COUNT_LFUDA "SELECT COUNT(*) FROM cacheLFUDA " \
+                              "WHERE key = ?;"
+
+#define SQL_QUERY_SINGLE_LFUDA "SELECT * FROM cacheLFUDA " \
+                               "WHERE key = ?;"
+
+#define SQL_QUERY_TIME_LFUDA "SELECT key, timestamp FROM cacheLFUDA " \
+                             "WHERE key = ?;"
+
+#define SQL_QUERY_WORST_LFUDA "SELECT * FROM cacheLFUDA " \
+                              "ORDER BY eff ASC, freq ASC, " \
+                              "timestamp ASC, size ASC LIMIT 1;"
 
 #define SQL_QUERY_ALL_LFUDA "SELECT * FROM cacheLFUDA;"
 
+#define SQL_DELETE_SINGLE_LFUDA "DELETE FROM cacheLFUDA WHERE key = ? " \
+                                "RETURNING key, size, download_time, " \
+                                "hash, timestamp, freq, eff;"
+
+#define SQL_DELETE_WORST_LFUDA "DELETE FROM cacheLFUDA " \
+                               "WHERE key = ( " \
+                               "SELECT key FROM cacheLFUDA " \
+                               "ORDER BY eff ASC, freq eff, " \
+                               "timestamp ASC, size ASC " \
+                               "LIMIT 1) " \
+                               "RETURNING key, size, download_time " \
+                               "hash, timestamp, freq, eff;"

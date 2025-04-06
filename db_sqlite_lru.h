@@ -55,11 +55,11 @@ public:
     }
 
     int update_lru_seq(const std::string& key, int64_t sequence){
-        return execute(SQL_UPDATE_LRU_SEQ, sequence, key);
+        return execute(SQL_UPDATE_SEQ_LRU, sequence, key);
     }
 
     int update_lru_content(const std::string& key, size_t size){
-        return execute(SQL_UPDATE_LRU_CONTENT, size, key);
+        return execute(SQL_UPDATE_CONTENT_LRU, size, key);
     }
 
     int update_meta(const MetaLRU& entry){

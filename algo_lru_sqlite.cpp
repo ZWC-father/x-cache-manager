@@ -1,5 +1,9 @@
 #include "algo_lru_sqlite.h"
 
+/*
+ * TODO: add hash update support
+ */
+
 LRU::LRU(std::shared_ptr<SQLiteLRU> db, RemoveCallback cb) :
 db_sqlite(db), remove_callback(cb),
 meta_lru({0, 0, 0}) {}
@@ -13,15 +17,20 @@ void LRU::init(){ //data validation should be performed before LRU
     
     //some simple check
     if(meta_lru.max_size == 0){
-        throw AlgoErrorLRU("init check failed: max_size must not be zero");
+        throw AlgoErrorLRU("db error(init check): max_size must not be zero");
     }
     
     auto entry = db_sqlite->query_lru_new();
-    if(entry.key.size() && entry.sequence != meta_lru.sequence){
-        throw AlgoErrorLRU("init check failed: sequence mismatch");
+    if(entry.key.empty() && meta_lru.cache_size){
+        throw AlgoErrorLRU("db error(init check): empty cache but cache_size mismatch");
     }
+
+    if(entry.key.size() && entry.sequence != meta_lru.sequence){
+        throw AlgoErrorLRU("db error(init check): sequence mismatch");
+    }
+    
     if(entry.key.size() && entry.size > meta_lru.cache_size){
-        throw AlgoErrorLRU("init check failed: cache_size mismatch");
+        throw AlgoErrorLRU("db error(init check): cache_size mismatch");
     }
 
     if(meta_lru.cache_size > meta_lru.max_size){
@@ -29,8 +38,8 @@ void LRU::init(){ //data validation should be performed before LRU
         remove_cache(0);
     }
     
-    std::cerr << "init finished: " << meta_lru.cache_size << ", " << meta_lru.max_size << ", "
-    << meta_lru.sequence << std::endl;
+    std::cerr << "init finished: " << meta_lru.cache_size << ", "
+    << meta_lru.max_size << ", " << meta_lru.sequence << std::endl;
 }
 
 void LRU::backup() const{
