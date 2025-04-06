@@ -42,7 +42,7 @@ bool LRU::put(const Cache& cache){
     if(cache.key.empty())throw AlgoErrorLRU("key must not be null");
     if(cache.size == 0 || cache.size > meta_lru.max_size){
         throw AlgoErrorLRU("size must not be zero or greater than max_size");
-    }
+    }//TODO: process this kind of error in adapter
     
     auto entry = db_sqlite->query_lru_single(cache.key);
     if(entry.key.empty()){
