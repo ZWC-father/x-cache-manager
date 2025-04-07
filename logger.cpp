@@ -1,4 +1,5 @@
 #include "logger.h"
+#include <atomic>
 #include <exception>
 #include <memory>
 #include <spdlog/logger.h>
@@ -8,10 +9,10 @@
 void Logger::set_logger(int type, int action, const std::string& file,
                         size_t rotating_size, size_t rotating_nums){
     try{
-        if(type & LOG_SINK_STDOUT){
-            if(action == LOG_ACTION_INIT){
+        if(type & LOG_MODE_STDOUT){
+            if(action & LOG_ACTION_INIT){
                 if(logger_stdout == nullptr){
-                    if(sink_stdout == nullptr)sink_stdout = std::make_shared<spdlog::sinks::stdout_color_sink_st>();
+                    if(sink_stdout == nullptr)sink_stdout = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
                     sink_stdout->set_color(spdlog::level::debug, "\033[32m");
                     sink_stdout->set_color(spdlog::level::info,  "\033[37m");
                     sink_stdout->set_color(spdlog::level::warn,  "\033[33m");
@@ -22,21 +23,48 @@ void Logger::set_logger(int type, int action, const std::string& file,
                           throw LoggerError("Logger [STDOUT] Error while Logging: " + msg);
                     });
 
-                }else LoggerError("Logger [STDOUT] Duplicated Setup");
-            } 
+                }
+            }
+            if(action & LOG_ACTION_ENABLE){
+                if(logger_stdout != nullptr){
+                    logger_mode.fetch_or(LOG_MODE_STDOUT, std::memory_order_acq_rel);
+                }
+            }
+            if(action & LOG_ACTION_DISABLE){
+                logger_mode.fetch_and(LOG_MODE_STDERR | LOG_MODE_FILES, std::memory_order_acq_rel);
+            }
         }
 
-        if(type & LOG_SINK_STDERR){
+        if(type & LOG_MODE_STDERR){
             if(action == LOG_ACTION_INIT){
                 if(logger_stderr == nullptr){
-                }else LoggerError("Logger [STDERR] Duplicated Setup");
+                    if(sink_stderr == nullptr)sink_stderr = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+                    sink_stderr->set_color(spdlog::level::warn,  "\033[33m");
+                    sink_stderr->set_color(spdlog::level::err,   "\033[31m");
+                    sink_stderr->set_color(spdlog::level::critical, "\033[35m");
+                    logger_stderr = std::make_unique<spdlog::logger>("logger_stderr", sink_stderr);
+                    logger_stderr->set_error_handler([](const std::string& msg){
+                          throw LoggerError("Logger [STDERR] Error while Logging: " + msg);
+                    });
+                }
+            }
+
+            if(action & LOG_ACTION_ENABLE){
+                if(logger_stderr != nullptr){
+                    logger_mode.fetch_or(LOG_MODE_STDERR, std::memory_order_acq_rel);
+                }
+            }
+
+            if(action & LOG_ACTION_DISABLE){
+                logger_mode.fetch_and(LOG_MODE_STDOUT | LOG_MODE_FILES, std::memory_order_acq_rel);
             }
 
         }
 
-        if(type & LOG_SINK_FILES){
+        if(type & LOG_MODE_FILES){
 
         }
+
     }catch(const std::exception& e){
         throw LoggerError(std::string("Logger Setup Error: ") + e.what());
     }

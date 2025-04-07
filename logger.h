@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <exception>
@@ -25,21 +26,30 @@ public:
 class Logger{
 public:
     enum {
-        LOG_ACTION_INIT,
-        LOG_ACTION_ENABLE,
-        LOG_ACTION_DISABLE
+        LOG_ACTION_INIT = 1,
+        LOG_ACTION_ENABLE = 2,
+        LOG_ACTION_DISABLE = 4
     };
     
     enum {
         LOG_OPT_STRING_MAX,
         LOG_OPT_QUEUE_MAX,
         LOG_OPT_HOLDER_TIMEOUT,
+        LOG_OPT_LEVEL
     };
 
-    enum LOG_SINK_ {
-        LOG_SINK_STDOUT = 1,
-        LOG_SINK_STDERR = 2,
-        LOG_SINK_FILES = 4
+    enum {
+        LOG_LEVEL_CRITICAL,
+        LOG_LEVEL_ERR,
+        LOG_LEVEL_WARN,
+        LOG_LEVEL_INFO,
+        LOG_LEVEL_DEBUG
+    };
+
+    enum {
+        LOG_MODE_STDOUT = 1,
+        LOG_MODE_STDERR = 2,
+        LOG_MODE_FILES = 4
     };
 
     Logger() : logger_mode(0), holder_now(0),holder_count(0),
@@ -48,40 +58,38 @@ public:
 
     ~Logger();
 
-    template<int Opt, typename T>
-    void set_option(T arg){
-        if(logger_mode)return; //you should not set option after init
-        if constexpr(Opt == 0){
-            param.string_max = arg;
-        }else if constexpr(Opt == 1){
-            param.queue_max = arg;
-        }else if constexpr(Opt == 2){
-            param.holder_timeout = arg;
-        }else{
-            static_assert(true, "Invalid Option in set_option()");
+    template<typename T>
+    void set_option(int opt, T arg){
+        if(opt == LOG_OPT_STRING_MAX){
+            param.string_max.store(arg, std::memory_order_release);
+        }else if(opt == LOG_OPT_QUEUE_MAX){
+            param.queue_max.store(arg, std::memory_order_release);
+        }else if(opt == LOG_OPT_HOLDER_TIMEOUT){
+            param.holder_timeout(arg, std::memory_order_release);
+        }else if(opt == LOG_OPT_LEVEL){
+            param.logger_level.store(arg, std::memory_order_release);
         }
     }
     
     void set_logger(int type, int action, const std::string& file = DEFAULT_FILE,
                     size_t rotating_size = DEFAULT_RT_SIZE, size_t rotating_num = DEFAULT_RT_NUMS);
 
-    static void put_debug();
-    static void put_info();
-    static void put_warn();
-    static void put_errr();
-    static void put_fatal();
+    static void put_critical(const std::string& str, int hold = 0);
+    static void put_err(const std::string& str, int hold = 0);
+    static void put_warn(const std::string& str, int hold = 0);
+    static void put_info(const std::string& str, int hold = 0);
+    static void put_debug(const std::string& str, int hold = 0);
 
 private:
     //logger status
     std::atomic<int> logger_mode;
-    std::atomic<int> holder_now;
-    std::atomic<int> holder_count;
 
     //params
     struct Param{
         std::atomic<size_t> string_max;
         std::atomic<size_t> queue_max;
         std::atomic<uint32_t> holder_timeout; //ms
+        std::atomic<int> logger_level; 
     }param;
 
     struct Holder{
@@ -94,11 +102,13 @@ private:
         std::optional<Holder> holder;
     };
 
-    std::list<Log> logs; 
+    int holder_now, holder_count;
+    std::list<Log> logs;
+    std::mutex logger_lock;
   
-    std::shared_ptr<spdlog::sinks::stdout_color_sink_st> sink_stdout;
-    std::shared_ptr<spdlog::sinks::stderr_color_sink_st> sink_stderr;
-    std::shared_ptr<spdlog::sinks::rotating_file_sink_st> sink_files;
+    std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> sink_stdout;
+    std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> sink_stderr;
+    std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> sink_files;
 
     std::unique_ptr<spdlog::logger> logger_stdout;
     std::unique_ptr<spdlog::logger> logger_stderr;
