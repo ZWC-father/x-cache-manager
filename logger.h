@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -9,6 +10,8 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+
+#define DEFAULT_LOG_LEVEL LOG_LEVEL_INFO
 
 #define DEFAULT_FILE "cache-manager.log"
 #define DEFAULT_RT_SIZE 1048576
@@ -63,7 +66,7 @@ public:
         if(opt == LOG_OPT_STRING_MAX){
             param.string_max.store(arg, std::memory_order_release);
         }else if(opt == LOG_OPT_QUEUE_MAX){
-            param.queue_max.store(arg, std::memory_order_release);
+            param.list_max.store(arg, std::memory_order_release);
         }else if(opt == LOG_OPT_HOLDER_TIMEOUT){
             param.holder_timeout(arg, std::memory_order_release);
         }else if(opt == LOG_OPT_LEVEL){
@@ -74,11 +77,13 @@ public:
     void set_logger(int type, int action, const std::string& file = DEFAULT_FILE,
                     size_t rotating_size = DEFAULT_RT_SIZE, size_t rotating_num = DEFAULT_RT_NUMS);
 
-    static void put_critical(const std::string& str, int hold = 0);
-    static void put_err(const std::string& str, int hold = 0);
-    static void put_warn(const std::string& str, int hold = 0);
-    static void put_info(const std::string& str, int hold = 0);
-    static void put_debug(const std::string& str, int hold = 0);
+    int hold();
+    void release(int holder);
+    int put_critical(const std::string& str, int hold = 0);
+    int put_err(const std::string& str, int hold = 0);
+    int put_warn(const std::string& str, int hold = 0);
+    int put_info(const std::string& str, int hold = 0);
+    int put_debug(const std::string& str, int hold = 0);
 
 private:
     //logger status
@@ -87,7 +92,7 @@ private:
     //params
     struct Param{
         std::atomic<size_t> string_max;
-        std::atomic<size_t> queue_max;
+        std::atomic<size_t> list_max;
         std::atomic<uint32_t> holder_timeout; //ms
         std::atomic<int> logger_level; 
     }param;
@@ -104,7 +109,8 @@ private:
 
     int holder_now, holder_count;
     std::list<Log> logs;
-    std::mutex logger_lock;
+    std::mutex list_lock;
+    std::condition_variable cv;
   
     std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> sink_stdout;
     std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> sink_stderr;

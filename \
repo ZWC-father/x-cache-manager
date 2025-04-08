@@ -99,15 +99,4 @@ void Logger::set_logger(int type, int action, const std::string& file,
 
 }
 
-int Logger::put_debug(const std::string& str, int hold){
-    if(logger_mode.load(std::memory_order_relaxed) & (LOG_MODE_STDOUT | LOG_MODE_FILES)){
-        if(!hold){
-            list_lock.lock();
-        }else if(hold > 0){
-        }else{
-        }
-    }
-}
-
-
 
