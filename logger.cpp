@@ -1,9 +1,5 @@
 #include "logger.h"
 
-Logger::~Logger(){
-    spdlog::shutdown();
-}
-
 void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                         size_t rotating_size, size_t rotating_nums){
     try{

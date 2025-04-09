@@ -128,8 +128,6 @@ public:
     Logger() : logger_level_console(LOG_LEVEL_OFF),
                logger_level_files(LOG_LEVEL_OFF), stderr_enabled(false) {}
 
-    ~Logger();
-
 
     void setup(int logger, size_t buffer_size = DEFAULT_BUFF_SIZE,
                const std::string& file_name = DEFAULT_FILE,

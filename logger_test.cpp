@@ -5,16 +5,16 @@ Logger* logger;
 void logger_1(){
     for(int i = 0; i <= 1000; i++){
         auto tmp = logger->new_multi();
-//        tmp->put_info("wty ak ioi");
-//        tmp->put_warn("yjx ak ioi");
+        tmp->put_info(std::string(std::to_string(i)));
+        tmp->put_warn(std::string(std::to_string(i)));
         tmp->submit();
     }
 }
 
 void logger_2(){
     for(int i = 0; i <= 1000; i++){
-         logger->put_info("lhr ak ioi");
-//         logger->put_debug("zwc ak ioi");
+         logger->put_error(std::string(std::to_string(i)));
+         logger->put_debug(std::string(std::to_string(i)));
     }
 }
 
@@ -25,13 +25,11 @@ int main(){
                   1024, "akioi.log", 512, 3);
     logger->set_level(Logger::LOG_TYPE_CONSOLE | Logger::LOG_TYPE_FILES,
                       Logger::LOG_LEVEL_DEBUG);
-//    std::thread thr1(logger_1);
-//    std::thread thr2(logger_2);
-//    thr1.join();
-//    thr2.join();
-    for(int i = 0; i <= 1000; i++){
-         logger->put_info(std::string(std::to_string(i)));
-//         logger->put_debug("zwc ak ioi");
-    }
+    std::thread thr1(logger_1);
+    std::thread thr2(logger_2);
+    thr1.join();
+    thr2.join();
+
+    delete logger;
     return 0;
 }
