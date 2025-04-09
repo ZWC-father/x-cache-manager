@@ -1,19 +1,25 @@
 /*
  * Logger (console/rotating file) for x-cache-manager and other application
- * Notice: this logger is not binary-safe but thread-safe
  * The logging level can be changed on the fly
  * It use non-blocking async i/o but may block when the queue is full
  *
+ * Warning 1: This logger is not binary-safe but thread-safe
+ * Warning 2: If you want to enable stderr, the log with level lower than
+ * warn(included) will be writen to stderr.
+ * Warning 3: If you enable stderr, and put in multiple logs with different
+ * level, it may reordered, as logger_stdout and logger_stderr preserve their
+ * own sink & queue
  */
 
 #include <atomic>
 #include <cstdint>
 #include <exception>
-#include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <queue>
 #include <shared_mutex>
 #include <stdexcept>
+#include <memory>
 #include "spdlog/spdlog.h"
 #include "spdlog/async.h"
 #include <spdlog/async_logger.h>
@@ -57,7 +63,27 @@ public:
 
     struct MultiLog{
     public:
-        MultiLog(Logger* logger) : logger(logger) {}
+        MultiLog(Logger* logger) : logger_ptr(logger) {}
+        void put_critical(const std::string& msg){
+            logs.push(std::make_pair(msg, LOG_LEVEL_CRITICAL));
+        }
+        
+        void put_error(const std::string& msg){
+            logs.push(std::make_pair(msg, LOG_LEVEL_ERROR));
+        }
+
+        void put_warn(const std::string& msg){
+            logs.push(std::make_pair(msg, LOG_LEVEL_WARN));
+        }
+        
+        void put_info(const std::string& msg){
+            logs.push(std::make_pair(msg, LOG_LEVEL_INFO));
+        }
+        
+        void put_debug(const std::string& msg){
+            logs.push(std::make_pair(msg, LOG_LEVEL_DEBUG));
+        }
+        
         void push(const std::string& msg, int level){
             if(level < LOG_LEVEL_CRITICAL || level > LOG_LEVEL_DEBUG)return;
             logs.push(std::make_pair(msg, level)); 
@@ -69,54 +95,62 @@ public:
 
         void submit(){
             if(logs.empty())return;
-            logger->logger_lock.lock();
+
+            std::unique_lock<std::shared_mutex> lock(logger_ptr->logger_lock);
             while(logs.size()){
-                if(logs.front.second > logger->)
                 switch (logs.front().second){
                     case LOG_LEVEL_CRITICAL:
-                        logger->put_critical(logs.front().first);
+                        logger_ptr->put_critical_impl(logs.front().first);
                         break;
-                    case LOG_LEVEL_ERROR
-
+                    case LOG_LEVEL_ERROR:
+                        logger_ptr->put_error_impl(logs.front().first);
+                        break;
+                    case LOG_LEVEL_WARN:
+                        logger_ptr->put_warn_impl(logs.front().first);
+                        break;
+                    case LOG_LEVEL_INFO:
+                        logger_ptr->put_info_impl(logs.front().first);
+                        break;
+                    case LOG_LEVEL_DEBUG:
+                        logger_ptr->put_debug_impl(logs.front().first);
+                        break;
                     default:
                         break;
-
                 }
-
-                logs.pop(); 
+                logs.pop();
             }
-            logger->logger_lock.unlock();
         }
     private:
-        Logger* logger;
+        Logger* logger_ptr;
         std::queue<std::pair<std::string, int>> logs;
     };
 
-    Logger() : stderr_enabled(false), logger_level_console(LOG_LEVEL_OFF),
-               logger_level_files(LOG_LEVEL_OFF){}
+    Logger() : logger_level_console(LOG_LEVEL_OFF),
+               logger_level_files(LOG_LEVEL_OFF), stderr_enabled(false) {}
 
     ~Logger();
 
-    void set_level(int type, int level);
-    void set_stderr(bool enable);
 
     void setup(int logger, size_t buffer_size = DEFAULT_BUFF_SIZE,
                const std::string& file_name = DEFAULT_FILE,
                size_t rotating_size = DEFAULT_RT_SIZE,
                size_t rotating_nums = DEFAULT_RT_NUMS);
+    void set_level(int type, int level);
+    void set_stderr(bool enable);
 
+    std::unique_ptr<MultiLog> new_multi();
+    
     void put_critical(const std::string& msg);
     void put_error(const std::string& msg);
     void put_warn(const std::string& msg); // always try to put into logger_stderr
     void put_info(const std::string& msg);
     void put_debug(const std::string& msg);
 
-    std::unique_ptr<MultiLog> new_multi(const std::string& msg = "", int level = LOG_LEVEL_INFO);
 
 private:
     //logger status
-    std::atomic<bool> stderr_enabled;
     std::atomic<int> logger_level_console, logger_level_files;
+    std::atomic<bool> stderr_enabled;
 
     std::shared_mutex logger_lock;
 
@@ -124,8 +158,14 @@ private:
     std::shared_ptr<spdlog::sinks::stderr_color_sink_st> sink_stderr;
     std::shared_ptr<spdlog::sinks::rotating_file_sink_st> sink_files;
     
-    std::shared_ptr<spdlog::details::thread_pool> pool_stdout, pool_stderr, pool_files;
+    std::shared_ptr<spdlog::details::thread_pool> pool_console, pool_files;
 
-    std::unique_ptr<spdlog::async_logger> logger_stdout,  logger_stderr, logger_files;
+    std::shared_ptr<spdlog::async_logger> logger_stdout, logger_stderr, logger_files;
+    
+    void put_critical_impl(const std::string& msg);
+    void put_error_impl(const std::string& msg);
+    void put_warn_impl(const std::string& msg);
+    void put_info_impl(const std::string& msg);
+    void put_debug_impl(const std::string& msg);
 
 };
