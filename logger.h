@@ -28,9 +28,9 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 
 #define DEFAULT_LOG_LEVEL LOG_LEVEL_INFO
-#define DEFAULT_BUFF_SIZE 4096
+#define DEFAULT_BUFF_SIZE 16384            //16K
 #define DEFAULT_FILE "cache-manager.log"
-#define DEFAULT_RT_SIZE 1048576
+#define DEFAULT_RT_SIZE 5242880            //5M
 #define DEFAULT_RT_NUMS 5
 
 

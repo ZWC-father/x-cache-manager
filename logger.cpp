@@ -1,9 +1,6 @@
 #include "logger.h"
-#include <memory>
-#include <shared_mutex>
 
 Logger::~Logger(){
-    if(logger_files != nullptr)logger_files->flush();
     spdlog::shutdown();
 }
 
@@ -14,7 +11,6 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
             if(logger_stdout == nullptr){
                 if(sink_stdout == nullptr){
                     sink_stdout = std::make_shared<spdlog::sinks::stdout_color_sink_st>();
-                    sink_stdout->set_level(spdlog::level::debug);
                     sink_stdout->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
                     sink_stdout->set_color(spdlog::level::debug, "\033[32m");
                     sink_stdout->set_color(spdlog::level::info,  "\033[37m");
@@ -32,6 +28,9 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                 
                 if(logger_stdout != nullptr){
                     logger_stdout->disable_backtrace();
+                    logger_stdout->set_level(spdlog::level::debug);
+                    logger_stdout->flush_on(spdlog::level::debug);
+                    
                     spdlog::register_logger(logger_stdout);
                     logger_level_console.store(DEFAULT_LOG_LEVEL, std::memory_order_release);
                 }
@@ -42,7 +41,6 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
             if(logger_stderr == nullptr){
                 if(sink_stderr == nullptr){
                     sink_stderr = std::make_shared<spdlog::sinks::stderr_color_sink_st>();
-                    sink_stderr->set_level(spdlog::level::warn);
                     sink_stderr->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
                     sink_stderr->set_color(spdlog::level::warn,  "\033[33m");
                     sink_stderr->set_color(spdlog::level::err,   "\033[31m");
@@ -58,6 +56,9 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
             
                 if(logger_stderr != nullptr){
                     logger_stderr->disable_backtrace();
+                    logger_stderr->set_level(spdlog::level::warn);
+                    logger_stderr->flush_on(spdlog::level::warn);
+
                     spdlog::register_logger(logger_stderr);
                     stderr_enabled.store(true, std::memory_order_release);
                 }
@@ -69,7 +70,6 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                 if(sink_files == nullptr){
                     sink_files = std::make_shared<spdlog::sinks::rotating_file_sink_st>
                                  (file_name, rotating_size, rotating_nums);
-                    sink_files->set_level(spdlog::level::debug);
                     sink_files->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
                 }
                  
@@ -82,6 +82,8 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                 
                 if(logger_files != nullptr){
                     logger_files->disable_backtrace();
+                    logger_files->set_level(spdlog::level::debug);
+
                     spdlog::register_logger(logger_files);
                     logger_level_files.store(DEFAULT_LOG_LEVEL, std::memory_order_release);
                 }
@@ -145,17 +147,15 @@ void Logger::put_debug(const std::string& msg){
 void Logger::put_critical_impl(const std::string& msg){
     if(logger_level_console.load(std::memory_order_relaxed) >= LOG_LEVEL_CRITICAL){
         if(stderr_enabled.load(std::memory_order_relaxed)){
-            logger_stderr->error(msg);
-            logger_stderr->flush();
+            logger_stderr->critical(msg);
         }else{
-            logger_stdout->error(msg);
-            logger_stdout->flush();
+            logger_stdout->critical(msg);
             
         }
     }
     
     if(logger_level_files.load(std::memory_order_relaxed) >= LOG_LEVEL_CRITICAL){
-        logger_files->error(msg);
+        logger_files->critical(msg);
     }
 }
 
@@ -163,10 +163,8 @@ void Logger::put_error_impl(const std::string& msg){
     if(logger_level_console.load(std::memory_order_relaxed) >= LOG_LEVEL_ERROR){
         if(stderr_enabled.load(std::memory_order_relaxed)){
             logger_stderr->error(msg);
-            logger_stderr->flush();
         }else{
             logger_stdout->error(msg);
-            logger_stdout->flush();
         }
     }
     
@@ -179,10 +177,8 @@ void Logger::put_warn_impl(const std::string& msg){
     if(logger_level_console.load(std::memory_order_relaxed) >= LOG_LEVEL_WARN){
         if(stderr_enabled.load(std::memory_order_relaxed)){
             logger_stderr->warn(msg);
-            logger_stderr->flush();
         }else{
             logger_stdout->warn(msg);
-            logger_stdout->flush();
         }
     }
     
@@ -194,7 +190,6 @@ void Logger::put_warn_impl(const std::string& msg){
 void Logger::put_info_impl(const std::string& msg){
     if(logger_level_console.load(std::memory_order_relaxed) >= LOG_LEVEL_INFO){
         logger_stdout->info(msg);
-        logger_stdout->flush();
     }
     
     if(logger_level_files.load(std::memory_order_relaxed) >= LOG_LEVEL_INFO){
@@ -205,7 +200,6 @@ void Logger::put_info_impl(const std::string& msg){
 void Logger::put_debug_impl(const std::string& msg){
     if(logger_level_console.load(std::memory_order_relaxed) == LOG_LEVEL_DEBUG){
         logger_stdout->debug(msg);
-        logger_stdout->flush();
     }
     
     if(logger_level_files.load(std::memory_order_relaxed) == LOG_LEVEL_DEBUG){
