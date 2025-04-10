@@ -4,6 +4,10 @@ LFUDA::LFUDA(std::shared_ptr<SQLiteLFUDA> db, RemoveCallback cb) :
 db_sqlite(db), remove_callback(cb),
 meta_lfuda(0, 0, 0){}
 
+LFUDA::~LFUDA(){
+    backup();
+}
+
 void LFUDA::init(){
     meta_lfuda = db_sqlite->query_meta();
 
@@ -63,10 +67,9 @@ bool LFUDA::put(const Cache& cache){
     }
     
     if(cache.size > entry.size){
-        std::cerr << "warning: add duplicate cache, using the larger one" << std::endl;
+        std::cerr << "warning: duplicate cache, using the larger one" << std::endl;
         update_size(entry, cache.size);
     }
-
 
     return 0;
     
@@ -77,7 +80,7 @@ bool LFUDA::renew(const std::string& key, uint64_t timestamp){
     
     auto entry = db_sqlite->query_lfuda_time(key);
     if(entry.key.size()){
-        if(entry.timestamp <= timestamp){
+        if(entry.timestamp > timestamp){
             std::cerr << "warning: invalid timestamp: earlier than last access" << std::endl;
             timestamp = entry.timestamp;
         }
@@ -116,10 +119,12 @@ void LFUDA::resize(size_t new_size){
 }
 
 bool LFUDA::remove_cache(size_t required, const std::string& mark){
+    if(meta_lfuda.cache_size + required <= meta_lfuda.max_size)return 0;
     std::vector<Cache> removed;
     bool flag = 0;
     while(meta_lfuda.cache_size + required > meta_lfuda.max_size){
         auto entry = db_sqlite->delete_lfuda_old();
+        
         if(entry.key.empty()){
             if(removed.size())remove_callback(removed);
             throw AlgoErrorLFUDA("db error: cache_size mismatch or cache with empty key");
@@ -135,7 +140,7 @@ bool LFUDA::remove_cache(size_t required, const std::string& mark){
             throw AlgoErrorLFUDA("db error: cache_size mismatch");
         }
 
-        flag |= (mark.size() && entry.key == mark);
+        flag |= (entry.key == mark);
     }
     
     if(removed.size())remove_callback(removed);
@@ -164,17 +169,17 @@ void LFUDA::update_size(Cache& cache, size_t new_size){
 }
 
 void LFUDA::display() const{
-    std::cerr << "------- status -------\n";
+    std::cerr << "--- status (best first) ---\n";
     std::cerr << "cache list:\n";
     auto data = db_sqlite->query_lfuda_all();
     for(auto it : data){
-        std::cerr << "key: " << it.key << " size: " << it.size << " timestamp: "
-        << it.timestamp << " freq: " << it.freq << " eff_freq: " << it.eff << '\n';
+        std::cerr << "key: " << it.key << ", size: " << it.size << ", timestamp: "
+        << it.timestamp << ", freq: " << it.freq << ", eff: " << it.eff << '\n';
     }
     
     backup();
     auto metadata = db_sqlite->query_meta();
-    std::cerr << "-------- meta --------\n";
+    std::cerr << "---------- meta ----------\n";
     std::cerr << "cache_size: " << metadata.cache_size << ", max_size: " <<
     metadata.max_size << ", global_aging: " << metadata.global_aging << std::endl;
 

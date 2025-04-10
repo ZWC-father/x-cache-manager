@@ -2,6 +2,8 @@
  * This file is the implementation of LFU-DA algorithm (simple version) for
  * x-cache-manager (use sqlite as database and ds provider)
  * Simple dynamic aging policy is applied.
+ * If you want to change the sorting method,
+ * please check sql_statement.h
  * Complexity O(logN)
  */
 
@@ -38,7 +40,7 @@ public:
     void backup() const;
     bool put(const Cache& cache);
     bool renew(const std::string& key, uint64_t timestamp);
-    bool update(const std::string& key, size_t new_size);
+    bool update(const std::string& key, size_t new_size);//TODO: add hash support
     void resize(size_t new_size);
     Cache query(const std::string& key) const;
     void display() const;

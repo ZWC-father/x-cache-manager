@@ -77,7 +77,7 @@ bool LRU::put(const Cache& cache){
     }
     
     if(cache.size > entry.size){
-        std::cerr << "warning: add duplicate cache, using the larger one" << std::endl;
+        std::cerr << "warning: duplicate cache, using the larger one" << std::endl;
         update_size(entry, cache.size);
     }
 
@@ -141,10 +141,12 @@ void LRU::resize(size_t new_size){
 }
 
 bool LRU::remove_cache(size_t required, const std::string& mark){
+    if(meta_lru.cache_size + required <= meta_lru.max_size)return 0;
     std::vector<Cache> removed;
     bool flag = 0;
     while(meta_lru.cache_size + required > meta_lru.max_size){
         auto entry = db_sqlite->delete_lru_old();
+        
         if(entry.key.empty()){
             if(removed.size())remove_callback(removed);
             throw AlgoErrorLRU("db error: cache_size mismatch or cache with empty key");
@@ -159,8 +161,7 @@ bool LRU::remove_cache(size_t required, const std::string& mark){
             throw AlgoErrorLRU("db error: cache_size mismatch");
         }
         
-
-        flag |= (mark.size() && entry.key == mark);
+        flag |= (entry.key == mark);
     }
 
     if(removed.size())remove_callback(removed);
@@ -189,7 +190,7 @@ void LRU::update_size(Cache& cache, size_t new_size){ //cache.size will be updat
 }
 
 void LRU::display() const{
-    std::cerr << "------- status -------\n";
+    std::cerr << "--- status (latest first) ---\n";
     std::cerr << "cache list:\n";
     auto data = db_sqlite->query_lru_all();
     for(auto it : data){
@@ -199,7 +200,7 @@ void LRU::display() const{
     
     backup();
     auto metadata = db_sqlite->query_meta();
-    std::cerr << "-------- meta --------\n";
+    std::cerr << "---------- meta ----------\n";
     std::cerr << "max sequence: " << metadata.sequence << ", cache_size: "
     << metadata.cache_size << ", max_size: " << metadata.max_size << std::endl;
 }

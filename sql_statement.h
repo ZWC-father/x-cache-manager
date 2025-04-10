@@ -60,14 +60,15 @@
 #define SQL_QUERY_NEW_LRU "SELECT * FROM cacheLRU " \
                           "ORDER BY sequence DESC LIMIT 1;"
 
-#define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU;"
+#define SQL_QUERY_ALL_LRU "SELECT * FROM cacheLRU " \
+                          "ORDER BY sequence ASC;"
 
 #define SQL_DELETE_SINGLE_LRU "DELETE FROM cacheLRU WHERE key = ? " \
                               "RETURNING key, size, download_time, " \
                               "hash, sequence;"
 
 #define SQL_DELETE_OLD_LRU "DELETE FROM cacheLRU " \
-                           "WHERE key = ( " \
+                           "WHERE key = (" \
                            "SELECT key FROM cacheLRU " \
                            "ORDER BY sequence ASC " \
                            "LIMIT 1) " \
@@ -128,7 +129,7 @@
                              "WHERE key = ?;" \
 
 #define SQL_UPDATE_CONTENT_LFUDA "UPDATE cacheLFUDA " \
-                                 "SET size = ?, WHERE key = ?;"
+                                 "SET size = ? WHERE key = ?;"
 
 #define SQL_QUERY_COUNT_LFUDA "SELECT COUNT(*) FROM cacheLFUDA " \
                               "WHERE key = ?;"
@@ -143,17 +144,20 @@
                               "ORDER BY eff ASC, freq ASC, " \
                               "timestamp ASC, size ASC LIMIT 1;"
 
-#define SQL_QUERY_ALL_LFUDA "SELECT * FROM cacheLFUDA;"
+#define SQL_QUERY_ALL_LFUDA "SELECT * FROM cacheLFUDA " \
+                            "ORDER BY eff ASC, freq ASC, " \
+                            "timestamp ASC, size ASC;"
 
 #define SQL_DELETE_SINGLE_LFUDA "DELETE FROM cacheLFUDA WHERE key = ? " \
                                 "RETURNING key, size, download_time, " \
                                 "hash, timestamp, freq, eff;"
 
 #define SQL_DELETE_WORST_LFUDA "DELETE FROM cacheLFUDA " \
-                               "WHERE key = ( " \
+                               "WHERE key = (" \
                                "SELECT key FROM cacheLFUDA " \
-                               "ORDER BY eff ASC, freq eff, " \
+                               "ORDER BY eff ASC, freq ASC, " \
                                "timestamp ASC, size ASC " \
                                "LIMIT 1) " \
-                               "RETURNING key, size, download_time " \
+                               "RETURNING key, size, download_time, " \
                                "hash, timestamp, freq, eff;"
+

@@ -1,0 +1,2 @@
+put yjx 50
+update yjx 60

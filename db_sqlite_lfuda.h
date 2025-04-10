@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdint>
+#include <ctime>
 #include <execution>
 #include <sys/types.h>
 #include <tuple>
@@ -33,6 +34,7 @@ public:
     struct MetaLFUDA{
         size_t cache_size, max_size;
         uint64_t global_aging;
+        
         MetaLFUDA(size_t cache_size, size_t max_size, uint64_t global_aging) :
         cache_size(cache_size), max_size(max_size), global_aging(global_aging) {}
     };
@@ -42,6 +44,9 @@ public:
         uint64_t timestamp;
         uint64_t freq;
         uint64_t eff;
+
+        TFE(const std::string& key, uint64_t timestamp, uint64_t freq,
+            uint64_t eff) : key(key), timestamp(timestamp), freq(freq), eff(eff) {}
     };
 
     const bool is_new;
@@ -78,7 +83,7 @@ public:
     }
 
     int update_meta(const MetaLFUDA& entry){
-        return execute(SQL_UPDATE_METALRU, entry.cache_size, entry.max_size,
+        return execute(SQL_UPDATE_METALFUDA, entry.cache_size, entry.max_size,
                entry.global_aging);
     }
 
