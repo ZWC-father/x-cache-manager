@@ -21,7 +21,7 @@
 #define EXCEPT_THROW 2
 #define EXCEPT_BOTH  3
 
-#define TYPE_EXCEPT  0  //serious exception
+#define TYPE_EXCEPT  0  //command exception
 #define TYPE_ERROR   1  //REDIS_REPLY_ERROR
 #define TYPE_NIL     2  //REDIS_REPLY_NIL
 #define TYPE_STATUS  3  //REDIS_REPLY_STATUS
