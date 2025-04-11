@@ -17,7 +17,9 @@
 #include <iostream>
 #include <mutex>
 #include <queue>
+#include <cmath>
 #include <shared_mutex>
+#include <sstream>
 #include <stdexcept>
 #include <memory>
 #include "spdlog/spdlog.h"
@@ -26,6 +28,7 @@
 #include <spdlog/details/registry.h>
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/sinks/rotating_file_sink.h"
+
 
 #define DEFAULT_LOG_LEVEL LOG_LEVEL_INFO
 #define DEFAULT_BUFF_SIZE 16384            //16K
@@ -41,6 +44,8 @@ public:
 
 class Logger{
 public:
+    static constexpr int TOTAL_LEVELS = 6;
+
     enum {
         LOG_LOGGER_STDOUT = 1,
         LOG_LOGGER_STDERR = 2,
@@ -53,7 +58,7 @@ public:
     };
 
     enum {
-        LOG_LEVEL_OFF,
+        LOG_LEVEL_OFF = 0,
         LOG_LEVEL_CRITICAL,
         LOG_LEVEL_ERROR,
         LOG_LEVEL_WARN,
@@ -65,27 +70,33 @@ public:
     public:
         MultiLog(Logger* logger) : logger_ptr(logger) {}
         void put_critical(const std::string& msg){
+            if(!logger_ptr->should_log[LOG_LEVEL_CRITICAL].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, LOG_LEVEL_CRITICAL));
         }
         
         void put_error(const std::string& msg){
+            if(!logger_ptr->should_log[LOG_LEVEL_ERROR].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, LOG_LEVEL_ERROR));
         }
 
         void put_warn(const std::string& msg){
+            if(!logger_ptr->should_log[LOG_LEVEL_WARN].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, LOG_LEVEL_WARN));
         }
         
         void put_info(const std::string& msg){
+            if(!logger_ptr->should_log[LOG_LEVEL_INFO].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, LOG_LEVEL_INFO));
         }
         
         void put_debug(const std::string& msg){
+            if(!logger_ptr->should_log[LOG_LEVEL_DEBUG].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, LOG_LEVEL_DEBUG));
         }
         
-        void push(const std::string& msg, int level){
+        void put(const std::string& msg, int level){
             if(level < LOG_LEVEL_CRITICAL || level > LOG_LEVEL_DEBUG)return;
+            if(!logger_ptr->should_log[level].load(std::memory_order_relaxed))return;
             logs.push(std::make_pair(msg, level)); 
         }
 
@@ -126,7 +137,9 @@ public:
     };
 
     Logger() : logger_level_console(LOG_LEVEL_OFF),
-               logger_level_files(LOG_LEVEL_OFF), stderr_enabled(false) {}
+    logger_level_files(LOG_LEVEL_OFF), stderr_enabled(false) {
+        for(int i = 1; i < TOTAL_LEVELS; i++)should_log[i].store(false);
+    }
 
 
     void setup(int logger, size_t buffer_size = DEFAULT_BUFF_SIZE,
@@ -137,18 +150,66 @@ public:
     void set_stderr(bool enable);
 
     std::unique_ptr<MultiLog> new_multi();
+    std::unique_ptr<MultiLog> new_multi(int min_level);
+    
     
     void put_critical(const std::string& msg);
     void put_error(const std::string& msg);
     void put_warn(const std::string& msg); // always try to put into logger_stderr
     void put_info(const std::string& msg);
     void put_debug(const std::string& msg);
+    
+    template<typename... Args>
+    void put_critical(const Args&... args){
+        if(!should_log[LOG_LEVEL_CRITICAL].load(std::memory_order_relaxed))return;
+        std::ostringstream oss;
+        (oss << ... << args);
+        std::shared_lock<std::shared_mutex> lock(logger_lock);
+        put_critical_impl(oss.str());
+    }
+    
+    template<typename... Args>
+    void put_error(const Args&... args){
+        if(!should_log[LOG_LEVEL_ERROR].load(std::memory_order_relaxed))return;
+        std::ostringstream oss;
+        (oss << ... << args);
+        std::shared_lock<std::shared_mutex> lock(logger_lock);
+        put_error_impl(oss.str());
+    }
+    
+    template<typename... Args>
+    void put_warn(const Args&... args){
+        if(!should_log[LOG_LEVEL_WARN].load(std::memory_order_relaxed))return;
+        std::ostringstream oss;
+        (oss << ... << args);
+        std::shared_lock<std::shared_mutex> lock(logger_lock);
+        put_warn_impl(oss.str());
+    }
+
+    template<typename... Args>
+    void put_info(const Args&... args){
+        if(!should_log[LOG_LEVEL_INFO].load(std::memory_order_relaxed))return;
+        std::ostringstream oss;
+        (oss << ... << args);
+        std::shared_lock<std::shared_mutex> lock(logger_lock);
+        put_info_impl(oss.str());
+    }
+
+    template<typename... Args>
+    void put_debug(const Args&... args){
+        if(!should_log[LOG_LEVEL_DEBUG].load(std::memory_order_relaxed))return;
+        std::ostringstream oss;
+        (oss << ... << args);
+        std::shared_lock<std::shared_mutex> lock(logger_lock);
+        put_debug_impl(oss.str());
+    }
 
 
 private:
     //logger status
     std::atomic<int> logger_level_console, logger_level_files;
     std::atomic<bool> stderr_enabled;
+    std::atomic<bool> should_log[TOTAL_LEVELS];
 
     std::shared_mutex logger_lock;
 

@@ -26,16 +26,16 @@ RedisBase::~RedisBase(){
 void RedisBase::connect(){
     std::cerr << "connecting..." << std::endl;
     if(redis_ctx != NULL){
-        throw RedisError("connecting error: context not null before new connecting");
+        throw RedisError("connecting exception: context not null before new connecting");
     }
     
     for(int i = 1; i <= max_retries; i++){
         redis_ctx = redisConnectWithOptions(&redis_opt);
         if(redis_ctx == NULL){
-            throw RedisError("fatal: can't allocate context");
+            throw RedisError("connecting exception: can't allocate context");
         }else if(redis_ctx->err){
             proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
-                       "connecting error: ");
+                       "connecting exception: ");
         }else break;
         
         std::this_thread::sleep_for(retry_interval);
@@ -49,6 +49,7 @@ void RedisBase::connect(){
 }
 
 void RedisBase::disconnect(){
+    if(redis_ctx == NULL)return;
     redisFree(redis_ctx);
     redis_ctx = NULL;
     std::cerr << "disconnected" << std::endl;
@@ -57,13 +58,13 @@ void RedisBase::disconnect(){
 void RedisBase::reconnect(){
     std::cerr << "reconnecting..."  << std::endl;
     if(redis_ctx == NULL){
-        throw RedisError("reconnecting error: context is null before reconnecting");
+        throw RedisError("reconnecting exception: context is null before reconnecting");
     }
     
     for(int i = 1; i <= max_retries; i++){
         if(redisReconnect(redis_ctx) != REDIS_OK){
             proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
-                       "reconnecting error: ");
+                       "reconnecting exception: ");
         }else break;
 
         std::this_thread::sleep_for(retry_interval);
@@ -80,7 +81,7 @@ std::string RedisBase::proc_error(int flag, const std::string& error_pre){
     }else if(redis_ctx->err){
         error_msg = error_pre + redis_ctx->errstr;
     }else{
-        error_msg = error_pre + "unknown error";
+        error_msg = error_pre + "unknown";
     }
 
     if(flag & 1)std::cerr << error_msg << std::endl;

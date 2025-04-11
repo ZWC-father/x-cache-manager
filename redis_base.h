@@ -21,11 +21,10 @@
 #define EXCEPT_THROW 2
 #define EXCEPT_BOTH  3
 
-#define TYPE_EXCEPT  0  //command exception
-#define TYPE_ERROR   1  //REDIS_REPLY_ERROR
-#define TYPE_NIL     2  //REDIS_REPLY_NIL
-#define TYPE_STATUS  3  //REDIS_REPLY_STATUS
-#define TYPE_INVALID 4  //unexpected return type or too many entries
+#define TYPE_ERROR   0  //REDIS_REPLY_ERROR
+#define TYPE_NIL     1  //REDIS_REPLY_NIL
+#define TYPE_STATUS  2  //REDIS_REPLY_STATUS
+#define TYPE_INVALID 3  //unexpected return type or too many entries
 
 #define PORT         6379
 #define SRC_ADDR     "127.0.0.1"
@@ -63,7 +62,7 @@ public:
               int con_t = CONN_TIME, int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL,
               int rt_int = RETRY_INTVL, int max_rt = MAX_RETRY);
     ~RedisBase();
-    
+ 
     void connect();
     void disconnect();
     void reconnect();
@@ -76,11 +75,6 @@ public:
 
         Reply reply = redis_command_impl(cmd, std::forward<Args>(args)...);
         
-        if(reply == NULL){
-            return (OtherType){TYPE_EXCEPT,
-                   proc_error(EXCEPT_NONE, "command error: ")};
-        }
-
         if(reply->type == REDIS_REPLY_NIL){
             return (OtherType){TYPE_NIL, {}};
         }
@@ -157,12 +151,14 @@ private:
             proc_error(EXCEPT_PRINT, "command (" +
                        std::string(cmd) + ") error: "); 
             
+            /*
             if(redis_ctx->err != REDIS_ERR_IO &&
                redis_ctx->err != REDIS_ERR_EOF &&
                redis_ctx->err != REDIS_ERR_TIMEOUT){
                 proc_error(EXCEPT_THROW, "command (" +
                            std::string(cmd) + ") error: ");  
             }
+            */
 
             if(i == max_retries)break;
             
@@ -170,7 +166,7 @@ private:
             if(redis_ctx->err == REDIS_ERR_TIMEOUT)continue;
             reconnect();
         }
-        return Reply(reply, redisReplyDelete());
+        proc_error(EXCEPT_THROW, "command exception: ");
     }
    
 };

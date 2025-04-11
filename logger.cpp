@@ -28,7 +28,8 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                     logger_stdout->flush_on(spdlog::level::debug);
                     
                     spdlog::register_logger(logger_stdout);
-                    logger_level_console.store(DEFAULT_LOG_LEVEL, std::memory_order_release);
+                    logger_level_console.store(DEFAULT_LOG_LEVEL);
+                    for(int i = 1; i <= DEFAULT_LOG_LEVEL; i++)should_log[i].store(true);
                 }
             }
         }
@@ -56,7 +57,7 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                     logger_stderr->flush_on(spdlog::level::warn);
 
                     spdlog::register_logger(logger_stderr);
-                    stderr_enabled.store(true, std::memory_order_release);
+                    stderr_enabled.store(true);
                 }
             }
         }
@@ -81,7 +82,8 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                     logger_files->set_level(spdlog::level::debug);
 
                     spdlog::register_logger(logger_files);
-                    logger_level_files.store(DEFAULT_LOG_LEVEL, std::memory_order_release);
+                    logger_level_files.store(DEFAULT_LOG_LEVEL);
+                    for(int i = 1; i <= DEFAULT_LOG_LEVEL; i++)should_log[i].store(true);
                 }
             }
         }
@@ -104,10 +106,17 @@ void Logger::set_level(int type, int level){
             logger_level_files.store(level, std::memory_order_release);
         }
     }
+    
+    int max_level = std::max(logger_level_console.load(std::memory_order_acquire),
+                             logger_level_files.load(std::memory_order_acquire));
+    
+    for(int i = 1; i < TOTAL_LEVELS; i++){
+        should_log[i].store(i <= max_level);
+    }
 }
 
 void Logger::set_stderr(bool enable){
-    stderr_enabled.store(enable, std::memory_order_release);
+    stderr_enabled.store(enable);
 }
 
 std::unique_ptr<Logger::MultiLog> Logger::new_multi(){
@@ -115,27 +124,39 @@ std::unique_ptr<Logger::MultiLog> Logger::new_multi(){
     return multi_log;
 }
 
+std::unique_ptr<Logger::MultiLog> Logger::new_multi(int min_level){
+    if(min_level < LOG_LEVEL_CRITICAL || min_level > LOG_LEVEL_DEBUG)return nullptr;
+    if(!should_log[min_level].load(std::memory_order_relaxed))return nullptr;
+    std::unique_ptr<MultiLog> multi_log = std::make_unique<MultiLog>(this);
+    return multi_log;
+}
+
 void Logger::put_critical(const std::string& msg){
+    if(!should_log[LOG_LEVEL_CRITICAL].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
     put_critical_impl(msg);
 }
 
 void Logger::put_error(const std::string& msg){
+    if(!should_log[LOG_LEVEL_ERROR].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
     put_error_impl(msg);
 }
 
 void Logger::put_warn(const std::string& msg){
+    if(!should_log[LOG_LEVEL_WARN].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
     put_warn_impl(msg);
 }
 
 void Logger::put_info(const std::string& msg){
+    if(!should_log[LOG_LEVEL_INFO].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
     put_info_impl(msg);
 }
 
 void Logger::put_debug(const std::string& msg){
+    if(!should_log[LOG_LEVEL_DEBUG].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
     put_debug_impl(msg);
 }
