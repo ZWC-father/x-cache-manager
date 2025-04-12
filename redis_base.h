@@ -21,11 +21,6 @@
 #define EXCEPT_THROW 2
 #define EXCEPT_BOTH  3
 
-#define TYPE_ERROR   0  //REDIS_REPLY_ERROR
-#define TYPE_NIL     1  //REDIS_REPLY_NIL
-#define TYPE_STATUS  2  //REDIS_REPLY_STATUS
-#define TYPE_INVALID 3  //unexpected return type or too many entries
-
 #define PORT         6379
 #define SRC_ADDR     "127.0.0.1"
 #define CONN_TIME    1000
@@ -34,8 +29,6 @@
 #define RETRY_INTVL  200
 #define MAX_RETRY    3
 
-template<typename T>
-struct always_false : std::false_type {};
 
 class RedisError : public std::runtime_error{
 public:
@@ -52,10 +45,6 @@ struct redisReplyDelete{
 
 class RedisBase{
 public:
-    struct OtherType{
-        int type;
-        std::string msg;
-    };
     using Reply = std::unique_ptr<redisReply, redisReplyDelete>;
 
     RedisBase(const std::string& h, int p = PORT, const std::string& src_a = SRC_ADDR,
@@ -66,74 +55,25 @@ public:
     void connect();
     void disconnect();
     void reconnect();
-
+    bool connected;
     //no throw guarantee: this func will throw exception only if
     //there is a connection/io issue (when the client can't get reply from server).
     //binary-safe: cmd is not binary-safe
-    template<typename T, typename... Args>
-    std::variant<OtherType, T> command_single(const char* cmd, Args&&... args){
 
-        Reply reply = redis_command_impl(cmd, std::forward<Args>(args)...);
-        
-        if(reply->type == REDIS_REPLY_NIL){
-            return (OtherType){TYPE_NIL, {}};
-        }
-
-        if(reply->type == REDIS_REPLY_ERROR){
-            return (OtherType){TYPE_ERROR,
-                   std::string(reply->str, reply->len)};
-        }
-
-        if(reply->type == REDIS_REPLY_STATUS){
-            return (OtherType){TYPE_STATUS,
-                   std::string(reply->str, reply->len)};
-        }
-
-        if(reply->elements > 1){
-            return (OtherType){TYPE_INVALID,
-                   "command error: expecting one element"};
-        }
-
-        if constexpr(std::is_same_v<T, int>){
-            if(reply->type != REDIS_REPLY_INTEGER){
-                return (OtherType){TYPE_INVALID,
-                       "command error: expecting type int"};
-            }
-            return static_cast<int>(reply->integer);
-        }else if constexpr(std::is_same_v<T, int64_t>){
-            if(reply->type != REDIS_REPLY_INTEGER){
-                return (OtherType){TYPE_INVALID,
-                       "command error: expecting type int64_t"};
-            }
-            return reply->integer;
-        }else if constexpr(std::is_same_v<T, double>){
-            if(reply->type != REDIS_REPLY_DOUBLE){
-                return (OtherType){TYPE_INVALID,
-                       "command error: expecting type double"};
-            }
-            return reply->dval;
-        }else if constexpr(std::is_same_v<T, std::string>){
-            if(reply->type != REDIS_REPLY_STRING &&
-               reply->type != REDIS_REPLY_BIGNUM){
-                return (OtherType){TYPE_INVALID,
-                       "command error: expecting type std::string"};
-            }
-            return std::string(reply->str, reply->len); 
-        }else{
-            static_assert(always_false<T>::value, "unsupported type in command_single()");
-        }
+    template<typename... Args>
+    Reply command_single(const char* cmd, Args&&... args){
+        return redis_command_impl(cmd, std::forward<Args>(args)...);
     }
 
 
 private:
-    std::thread connect_daemo;
     redisOptions redis_opt;
     redisContext* redis_ctx;
     
     std::string host, source_addr;
     int port;
     timeval connect_tv, command_tv;
-    int alive_interval, max_retries;
+    int alive_interval, max_tries;
     std::chrono::milliseconds retry_interval;
 
     std::string proc_error(int flag, const std::string& error_pre);
@@ -141,7 +81,7 @@ private:
     template<typename... Args>
     Reply redis_command_impl(const char* cmd, Args&&... args){
         redisReply* reply;
-        for(int i = 1; i <= max_retries; i++){
+        for(int i = 1; i <= max_tries; i++){
             reply = static_cast<redisReply*>(redisCommand(redis_ctx, cmd,
                                              std::forward<Args>(args)...));
             if(reply != NULL){
@@ -149,24 +89,19 @@ private:
             }
             
             proc_error(EXCEPT_PRINT, "command (" +
-                       std::string(cmd) + ") error: "); 
-            
-            /*
-            if(redis_ctx->err != REDIS_ERR_IO &&
-               redis_ctx->err != REDIS_ERR_EOF &&
-               redis_ctx->err != REDIS_ERR_TIMEOUT){
+                       std::string(cmd) + ") error: ");
+            if(i == max_tries){
                 proc_error(EXCEPT_THROW, "command (" +
-                           std::string(cmd) + ") error: ");  
+                           std::string(cmd) + ") exception: ");
             }
-            */
 
-            if(i == max_retries)break;
-            
             std::this_thread::sleep_for(retry_interval);
-            if(redis_ctx->err == REDIS_ERR_TIMEOUT)continue;
-            reconnect();
+            if(redis_ctx->err == REDIS_ERR_IO || redis_ctx->err == REDIS_ERR_EOF){
+                reconnect();
+            }
+            
+            std::cerr << "command retry: #" << i << std::endl;
         }
-        proc_error(EXCEPT_THROW, "command exception: ");
     }
-   
+
 };

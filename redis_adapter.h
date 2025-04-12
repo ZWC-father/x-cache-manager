@@ -1,50 +1,118 @@
 #include "logger.h"
 #include "redis_base.h"
-#include <memory>
+#include <chrono>
+#include <hiredis/hiredis.h>
+#include <hiredis/read.h>
+#include <ratio>
+#include <stdexcept>
+#include <thread>
+#include <type_traits>
+#include <variant>
 
-class RedisAdapter{
+class RedisAdapter : private RedisBase{
 public:
-    RedisAdapter(const std::string& h, int p, const std::string& src,
-                 int con_t, int cmd_t, int al_int, int rt_int,
-                 int max_rt, std::shared_ptr<Logger> l){
-        redis = std::make_unique<RedisBase>(h, p, src, con_t, cmd_t,
-                                                al_int, rt_int, max_rt);
-        logger = l;
-
-    } 
+    struct RedisReplyInteger{int64_t val;};
+    struct RedisReplyDouble{double val; std::string str;};
+    struct RedisReplyString{std::string str;};
+    struct RedisReplyStringArray{
+        std::vector<std::string> vec;
+        RedisReplyStringArray(size_t size){vec.resize(size);}
+    };
     
-    ~RedisAdapter(){
-        redis->disconnect();
-    }
+    struct RedisReplyError{std::string str;};
+    struct RedisReplyNil{};
+    struct RedisReplyUnexpected{int type;};
+    struct RedisReplyUnknown{int type;};
+
+    struct RedisReplyOther{
+        std::variant<RedisReplyError, RedisReplyNil,
+        RedisReplyUnknown, RedisReplyUnexpected> reply;
+    };
+    
+
+    RedisAdapter(const std::string& host, int port, const std::string& src_addr,
+                 int connect_timeout, int command_timeout, int alive_interval,
+                 int retry_interval,  int max_retries, bool enable_upper_retry,
+                 std::shared_ptr<Logger> logger) :
+                 RedisBase(host, port, src_addr, connect_timeout, command_timeout,
+                 alive_interval, retry_interval, max_retries),
+                 upper_retry(enable_upper_retry), upper_retry_interval(retry_interval), logger(logger) {}
     
     void init(){
-        redis = std::make_unique<RedisBase>(host, port, src_addr,
-        connect_timeout, command_timeout, alive_interval,
-        retry_interval, max_retries);
-        redis->connect();
+        connect();
     }
 
     void reset(){
-        redis.reset();
-        init();
+        disconnect(); //free redis context and reconnect completely
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        connect();
     }
 
-    void close(){
-        redis->disconnect();
-    }
 
     template<typename T, typename... Args>
-    std::variant<RedisBase::OtherType, T> command(const char* cmd, Args&&... args){
-        redis->command_single<T>(cmd, std::forward<Args>(args)...);
+    std::variant<T, RedisReplyError, RedisReplyNil, RedisReplyUnknown> command(const char* cmd, Args&&... args){
+        Reply reply;
+        try{
+            reply = command_single<T>(cmd, std::forward<Args>(args)...);
+        }catch(const std::runtime_error& e){
+            logger->put_error("redis command failed: ", e.what());
+            if(!upper_retry)throw RedisError(std::string("redis command failed: ") + e.what());
+            try{
+                std::this_thread::sleep_for(std::chrono::milliseconds(upper_retry_interval));
+                logger->put_warn("redis command retry...");
+                if(connected){
+                    reply = command_single<T>(cmd, std::forward<Args>(args)...);
+                }else{
+                    reset();
+                    reply = command_single<T>(cmd, std::forward<Args>(args)...);
+                }
+            }catch(const std::runtime_error& e){
+                logger->put_error("redis command retry failed: ", e.what());
+                throw RedisError(std::string("redis command retry failed: ") + e.what());
+            }
+        }
+
+        
+        if constexpr(std::is_same_v<T, RedisReplyInteger>){
+            if(reply->type != REDIS_REPLY_INTEGER){
+                return (RedisReplyInteger){reply->integer};
+            }
+            return (RedisReplyOther){(RedisReplyUnexpected){reply->type}};
+        }else if constexpr(std::is_same_v<T, RedisReplyDouble>){
+            if(reply->type != REDIS_REPLY_DOUBLE){
+                return (RedisReplyDouble){reply->dval, std::string(reply->str, reply->len)};
+            }
+            return (RedisReplyOther){(RedisReplyUnexpected){reply->type}};
+        }else if constexpr(std::is_same_v<T, RedisReplyString>){
+            if(reply->type != REDIS_REPLY_STRING){
+                return (RedisReplyString){std::string(reply->str, reply->len)};
+            }
+            return (RedisReplyOther){(RedisReplyUnexpected){reply->type}};
+        }else if constexpr(std::is_same_v<T, RedisReplyStringArray>){
+            RedisReplyStringArray res(reply->elements);
+            for(int i = 0; i < reply->elements; i++){
+                if(reply->element[i]->type != REDIS_REPLY_STRING){
+                    return (RedisReplyOther){(RedisReplyUnexpected){reply->type}};
+                }
+                res.vec[i] = std::string(reply->element[i]->str, reply->element[i]->len);
+            }
+            return res;
+        }else{
+            static_assert(true, "invaild type in RedisAdapter::command()");
+        }
+
+        if(reply->type == REDIS_REPLY_ERROR){
+            return (RedisReplyOther){(RedisReplyError){std::string(reply->str, reply->len)}};
+        }else if(reply->type == REDIS_REPLY_NIL){
+            return (RedisReplyOther){(RedisReplyNil){}};
+        }
+        return (RedisReplyOther){(RedisReplyUnknown){reply->type}};
+
     }
     
 private:
-    const std::string host, src_addr;
-    int port;
-    int connect_timeout, command_timeout;
-    int alive_interval, retry_interval, max_retries;
-
+    bool upper_retry;
+    int upper_retry_interval;
     std::shared_ptr<Logger> logger;
-    std::unique_ptr<RedisBase> redis;
     
 };

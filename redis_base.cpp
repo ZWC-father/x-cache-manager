@@ -4,8 +4,8 @@ RedisBase::RedisBase(const std::string& h, int p,
 const std::string& src_a, int con_t, int cmd_t,
 int al_int, int rt_int, int max_rt) : host(h),
 port(p), source_addr(src_a), alive_interval(al_int),
-retry_interval(rt_int), max_retries(max_rt),
-redis_opt({0}), redis_ctx(NULL){
+retry_interval(rt_int), max_tries(max_rt + 1),
+redis_opt({0}), redis_ctx(NULL), connected(false){
     
     redis_opt.options |= REDIS_OPT_PREFER_IP_UNSPEC;
     REDIS_OPTIONS_SET_TCP(&redis_opt, host.c_str(), port);
@@ -25,17 +25,20 @@ RedisBase::~RedisBase(){
 
 void RedisBase::connect(){
     std::cerr << "connecting..." << std::endl;
+    
     if(redis_ctx != NULL){
         throw RedisError("connecting exception: context not null before new connecting");
     }
     
-    for(int i = 1; i <= max_retries; i++){
+    for(int i = 1; i <= max_tries; i++){
         redis_ctx = redisConnectWithOptions(&redis_opt);
         if(redis_ctx == NULL){
             throw RedisError("connecting exception: can't allocate context");
         }else if(redis_ctx->err){
-            proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
-                       "connecting exception: ");
+            proc_error(EXCEPT_PRINT, "connecting error: ");
+            if(i == max_tries){
+                proc_error(EXCEPT_THROW, "connecting exception: ");
+            }
         }else break;
         
         std::this_thread::sleep_for(retry_interval);
@@ -45,7 +48,9 @@ void RedisBase::connect(){
     if(redisEnableKeepAliveWithInterval(redis_ctx, alive_interval) != REDIS_OK){
         proc_error(EXCEPT_PRINT, "setting socket error: ");
     }
+
     std::cerr << "connected" << std::endl;
+    connected = true;
 }
 
 void RedisBase::disconnect(){
@@ -53,31 +58,38 @@ void RedisBase::disconnect(){
     redisFree(redis_ctx);
     redis_ctx = NULL;
     std::cerr << "disconnected" << std::endl;
+    connected = false;
 }
 
 void RedisBase::reconnect(){
     std::cerr << "reconnecting..."  << std::endl;
+    connected = false;
+    
     if(redis_ctx == NULL){
         throw RedisError("reconnecting exception: context is null before reconnecting");
     }
     
-    for(int i = 1; i <= max_retries; i++){
+    for(int i = 1; i <= max_tries; i++){
         if(redisReconnect(redis_ctx) != REDIS_OK){
-            proc_error(i < max_retries ? EXCEPT_PRINT : EXCEPT_BOTH,
-                       "reconnecting exception: ");
+            proc_error(EXCEPT_PRINT, "reconnecting error: ");
+            if(i == max_tries){
+                proc_error(EXCEPT_THROW, "reconnecting exception: ");
+            }
         }else break;
 
         std::this_thread::sleep_for(retry_interval);
         std::cerr << "reconnecting retry: #" << i << std::endl;
     }
+
     std::cerr << "connected" << std::endl;
+    connected = true;
 }
 
 std::string RedisBase::proc_error(int flag, const std::string& error_pre){
     std::string error_msg;
     
     if(redis_ctx->err == REDIS_ERR_IO){
-        error_msg = error_pre + "io error(" + std::to_string(errno) + ')';
+        error_msg = error_pre + "io error (" + std::to_string(errno) + ')';
     }else if(redis_ctx->err){
         error_msg = error_pre + redis_ctx->errstr;
     }else{
