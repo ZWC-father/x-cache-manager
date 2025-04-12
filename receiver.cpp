@@ -27,16 +27,17 @@ void Receiver::chown_chmod(){
 
 Receiver::Receiver(const std::string& socket, const std::string& owner, const std::string& group, const int& perms)
 : socket_path(socket), socket_owner(owner), socket_group(group), socket_perms(perms){
+    is_running.store(false), thread_running.store(false);
     if(socket_path.empty() || socket_owner.empty() || socket_group.empty() || socket_perms < 0 || socket_perms > 511)throw std::runtime_error("manager: invalid args");
 }
 
 Receiver::~Receiver(){
-//  if(is_running)receive_stop();
+//  if(is_running.load())receive_stop();
     socket->close();
     work_guard->reset();
     io->stop();
     
-    while(thread_running)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    while(thread_running.load())std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
     if(unlink(socket_path.c_str()))std::cerr << "manager: fail to unlink socket" << std::endl;
     delete work_guard;
@@ -45,7 +46,7 @@ Receiver::~Receiver(){
 }
 
 bool Receiver::now_running() const{
-    return is_running && thread_running;
+    return is_running.load() && thread_running.load();
 }
 
 void Receiver::init(const CallBack& cb){
@@ -70,9 +71,9 @@ void Receiver::init(const CallBack& cb){
 }
 
 void Receiver::receive_start(){
-    if(is_running)throw std::runtime_error("manager: fail to start receiving (already start)");
+    if(is_running.load())throw std::runtime_error("manager: fail to start receiving (already start)");
     receive();
-    is_running = true;
+    is_running.store(true);
 }
 
 void Receiver::receive_stop(){
@@ -80,13 +81,13 @@ void Receiver::receive_stop(){
     asio::error_code err;
     socket->cancel(err);
     if(err)throw std::runtime_error("manager: fail to stop receiving: " + err.message());
-    is_running = false;
+    is_running.store(false);
 }
 
 void Receiver::io_run(){
-    if(thread_running)throw std::runtime_error("manager: fail to start io (already start)");
-    thread_running = true;
-    io_thread = std::thread([this]() {io->run(); thread_running = false;});
+    if(thread_running.load())throw std::runtime_error("manager: fail to start io (already start)");
+    thread_running.store(true);
+    io_thread = std::thread([this]() {io->run(); thread_running.store(false);});
     io_thread.detach();
 }
 

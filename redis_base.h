@@ -16,6 +16,9 @@
 #include <utility>
 #include <hiredis/hiredis.h>
 
+#include "logger.h"
+#include "logging_zones.h"
+
 #define EXCEPT_NONE  0
 #define EXCEPT_PRINT 1
 #define EXCEPT_THROW 2
@@ -47,8 +50,9 @@ class RedisBase{
 public:
     using Reply = std::unique_ptr<redisReply, redisReplyDelete>;
 
-    RedisBase(const std::string& h, int p = PORT, const std::string& src_a = SRC_ADDR,
-              int con_t = CONN_TIME, int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL,
+    RedisBase(const std::shared_ptr<Logger>& l, const std::string& h, int p = PORT,
+              const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME,
+              int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL,
               int rt_int = RETRY_INTVL, int max_rt = MAX_RETRY);
     ~RedisBase();
  
@@ -62,11 +66,12 @@ public:
 
     template<typename... Args>
     Reply command_single(const char* cmd, Args&&... args){
-        return redis_command_impl(cmd, std::forward<Args>(args)...);
+        return command_impl(cmd, std::forward<Args>(args)...);
     }
 
 
 private:
+    std::shared_ptr<Logger> logger;
     redisOptions redis_opt;
     redisContext* redis_ctx;
     
@@ -79,7 +84,7 @@ private:
     std::string proc_error(int flag, const std::string& error_pre);
 
     template<typename... Args>
-    Reply redis_command_impl(const char* cmd, Args&&... args){
+    Reply command_impl(const char* cmd, Args&&... args){
         redisReply* reply;
         for(int i = 1; i <= max_tries; i++){
             reply = static_cast<redisReply*>(redisCommand(redis_ctx, cmd,
@@ -100,7 +105,7 @@ private:
                 reconnect();
             }
             
-            std::cerr << "command retry: #" << i << std::endl;
+            logger->put_warn(LOG_ZONE_REDIS, "command retry: #", i);
         }
     }
 

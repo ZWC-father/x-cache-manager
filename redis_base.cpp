@@ -1,11 +1,12 @@
 #include "redis_base.h"
+#include "logging_zones.h"
 
-RedisBase::RedisBase(const std::string& h, int p, 
-const std::string& src_a, int con_t, int cmd_t,
-int al_int, int rt_int, int max_rt) : host(h),
-port(p), source_addr(src_a), alive_interval(al_int),
-retry_interval(rt_int), max_tries(max_rt + 1),
-redis_opt({0}), redis_ctx(NULL), connected(false){
+RedisBase::RedisBase(const std::shared_ptr<Logger>& l,
+const std::string& h, int p,  const std::string& src_a,
+int con_t, int cmd_t, int al_int, int rt_int, int max_rt) :
+logger(l), host(h), port(p), source_addr(src_a), alive_interval(al_int),
+retry_interval(rt_int), max_tries(max_rt + 1), redis_opt({0}),
+redis_ctx(NULL), connected(false){
     
     redis_opt.options |= REDIS_OPT_PREFER_IP_UNSPEC;
     REDIS_OPTIONS_SET_TCP(&redis_opt, host.c_str(), port);
@@ -24,7 +25,7 @@ RedisBase::~RedisBase(){
 }
 
 void RedisBase::connect(){
-    std::cerr << "connecting..." << std::endl;
+    logger->put_info(LOG_ZONE_REDIS, "connecting");
     
     if(redis_ctx != NULL){
         throw RedisError("connecting exception: context not null before new connecting");
@@ -35,21 +36,19 @@ void RedisBase::connect(){
         if(redis_ctx == NULL){
             throw RedisError("connecting exception: can't allocate context");
         }else if(redis_ctx->err){
-            proc_error(EXCEPT_PRINT, "connecting error: ");
-            if(i == max_tries){
-                proc_error(EXCEPT_THROW, "connecting exception: ");
-            }
+            if(i < max_tries)proc_error(EXCEPT_PRINT, "connecting error: ");
+            else proc_error(EXCEPT_THROW, "connecting exception: ");
         }else break;
         
         std::this_thread::sleep_for(retry_interval);
-        std::cerr << "connecting retry: #" << i << std::endl;
+        logger->put_warn(LOG_ZONE_REDIS, "connecting retry: #", i);
     }
 
     if(redisEnableKeepAliveWithInterval(redis_ctx, alive_interval) != REDIS_OK){
         proc_error(EXCEPT_PRINT, "setting socket error: ");
     }
 
-    std::cerr << "connected" << std::endl;
+    logger->put_info(LOG_ZONE_REDIS, "connected");
     connected = true;
 }
 
@@ -57,12 +56,12 @@ void RedisBase::disconnect(){
     if(redis_ctx == NULL)return;
     redisFree(redis_ctx);
     redis_ctx = NULL;
-    std::cerr << "disconnected" << std::endl;
+    logger->put_info(LOG_ZONE_REDIS, "disconnected");
     connected = false;
 }
 
 void RedisBase::reconnect(){
-    std::cerr << "reconnecting..."  << std::endl;
+    logger->put_info(LOG_ZONE_REDIS, "reconnecting");
     connected = false;
     
     if(redis_ctx == NULL){
@@ -71,17 +70,15 @@ void RedisBase::reconnect(){
     
     for(int i = 1; i <= max_tries; i++){
         if(redisReconnect(redis_ctx) != REDIS_OK){
-            proc_error(EXCEPT_PRINT, "reconnecting error: ");
-            if(i == max_tries){
-                proc_error(EXCEPT_THROW, "reconnecting exception: ");
-            }
+            if(i < max_tries)proc_error(EXCEPT_PRINT, "reconnecting error: ");
+            else proc_error(EXCEPT_THROW, "reconnecting exception: ");
         }else break;
 
         std::this_thread::sleep_for(retry_interval);
-        std::cerr << "reconnecting retry: #" << i << std::endl;
+        logger->put_warn(LOG_ZONE_REDIS, "reconnecting retry: #", i);
     }
 
-    std::cerr << "connected" << std::endl;
+    logger->put_info(LOG_ZONE_REDIS, "connected");
     connected = true;
 }
 
@@ -96,10 +93,9 @@ std::string RedisBase::proc_error(int flag, const std::string& error_pre){
         error_msg = error_pre + "unknown";
     }
 
-    if(flag & 1)std::cerr << error_msg << std::endl;
+    if(flag & 1)logger->put_error(LOG_ZONE_REDIS, error_msg);
     if(flag & 2)throw RedisError(error_msg);
 
     return error_msg;
 }
-
 

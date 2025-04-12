@@ -49,7 +49,7 @@ private:
      datagram_protocol::socket* socket = nullptr;
 
      std::thread io_thread;
-     std::atomic<bool> thread_running = false, is_running = false;//TODO: add is_init
+     std::atomic<bool> thread_running, is_running;//TODO: add is_init
 
      void chown_chmod();
      void receive();

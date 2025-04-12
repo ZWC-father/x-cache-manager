@@ -1,4 +1,5 @@
 #include "logger.h"
+#include "logging_zones.h"
 
 void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                         size_t rotating_size, size_t rotating_nums){
@@ -96,14 +97,18 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
 
 void Logger::set_level(int type, int level){
     if(type & LOG_TYPE_CONSOLE){
-        if(level >= LOG_LEVEL_OFF && level <= LOG_LEVEL_DEBUG){
-            logger_level_console.store(level, std::memory_order_release);
+        if(logger_stdout != nullptr){
+            if(level >= LOG_LEVEL_OFF && level <= LOG_LEVEL_DEBUG){
+                logger_level_console.store(level, std::memory_order_release);
+            }
         }
     }
 
     if(type & LOG_TYPE_FILES){
-        if(level >= LOG_LEVEL_OFF && level <= LOG_LEVEL_DEBUG){
-            logger_level_files.store(level, std::memory_order_release);
+        if(logger_files != nullptr){
+            if(level >= LOG_LEVEL_OFF && level <= LOG_LEVEL_DEBUG){
+                logger_level_files.store(level, std::memory_order_release);
+            }
         }
     }
     
@@ -119,46 +124,46 @@ void Logger::set_stderr(bool enable){
     stderr_enabled.store(enable);
 }
 
-std::unique_ptr<Logger::MultiLog> Logger::new_multi(){
-    std::unique_ptr<MultiLog> multi_log = std::make_unique<MultiLog>(this);
+std::unique_ptr<Logger::MultiLog> Logger::new_multi(int zone){
+    std::unique_ptr<MultiLog> multi_log = std::make_unique<MultiLog>(this, zone);
     return multi_log;
 }
 
-std::unique_ptr<Logger::MultiLog> Logger::new_multi(int min_level){
+std::unique_ptr<Logger::MultiLog> Logger::new_multi(int zone, int min_level){
     if(min_level < LOG_LEVEL_CRITICAL || min_level > LOG_LEVEL_DEBUG)return nullptr;
     if(!should_log[min_level].load(std::memory_order_relaxed))return nullptr;
-    std::unique_ptr<MultiLog> multi_log = std::make_unique<MultiLog>(this);
+    std::unique_ptr<MultiLog> multi_log = std::make_unique<MultiLog>(this, zone);
     return multi_log;
 }
 
-void Logger::put_critical(const std::string& msg){
+void Logger::put_critical(int zone, const std::string& msg){
     if(!should_log[LOG_LEVEL_CRITICAL].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
-    put_critical_impl(msg);
+    put_critical_impl(logging_prefix[zone] + msg);
 }
 
-void Logger::put_error(const std::string& msg){
+void Logger::put_error(int zone, const std::string& msg){
     if(!should_log[LOG_LEVEL_ERROR].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
-    put_error_impl(msg);
+    put_error_impl(logging_prefix[zone] + msg);
 }
 
-void Logger::put_warn(const std::string& msg){
+void Logger::put_warn(int zone, const std::string& msg){
     if(!should_log[LOG_LEVEL_WARN].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
-    put_warn_impl(msg);
+    put_warn_impl(logging_prefix[zone] + msg);
 }
 
-void Logger::put_info(const std::string& msg){
+void Logger::put_info(int zone, const std::string& msg){
     if(!should_log[LOG_LEVEL_INFO].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
-    put_info_impl(msg);
+    put_info_impl(logging_prefix[zone] + msg);
 }
 
-void Logger::put_debug(const std::string& msg){
+void Logger::put_debug(int zone, const std::string& msg){
     if(!should_log[LOG_LEVEL_DEBUG].load(std::memory_order_relaxed))return;
     std::shared_lock<std::shared_mutex> lock(logger_lock);
-    put_debug_impl(msg);
+    put_debug_impl(logging_prefix[zone] + msg);
 }
 
 void Logger::put_critical_impl(const std::string& msg){

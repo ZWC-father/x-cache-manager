@@ -3,7 +3,7 @@
 Logger* logger;
 void logger_1(){
     for(int i = 0; i <= 1000; i++){
-        auto tmp = logger->new_multi();
+        auto tmp = logger->new_multi(0);
         tmp->put_warn("test");
         tmp->put_info("yjx");
         tmp->submit();
@@ -12,8 +12,8 @@ void logger_1(){
 
 void logger_2(){
     for(int i = 0; i <= 1000; i++){
-         logger->put_critical("lhr: ", i);
-         logger->put_critical("yjx: ", i);
+         logger->put_critical(0, "lhr: ", i);
+         logger->put_critical(0, "yjx: ", i);
     }
 }
 
