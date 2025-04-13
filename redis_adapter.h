@@ -67,31 +67,32 @@ public:
             }
         }
 
+        //logger->put_debug(LOG_ZONE_REDIS, "command reply type: ", reply->type);
         if(reply->type == REDIS_REPLY_ERROR){
             return (RedisReplyError){std::string(reply->str, reply->len)};
         }
 
         if constexpr(std::is_same_v<T, RedisReplyInteger>){
-            if(reply->type != REDIS_REPLY_INTEGER){
+            if(reply->type == REDIS_REPLY_INTEGER){
                 return (RedisReplyInteger){reply->integer};
             }
         }else if constexpr(std::is_same_v<T, RedisReplyDouble>){
-            if(reply->type != REDIS_REPLY_DOUBLE){
+            if(reply->type == REDIS_REPLY_DOUBLE){
                 return (RedisReplyDouble){reply->dval, std::string(reply->str, reply->len)};
             }
         }else if constexpr(std::is_same_v<T, RedisReplyStatus>){
-            if(reply->type != REDIS_REPLY_STATUS){
+            if(reply->type == REDIS_REPLY_STATUS){
                 return (RedisReplyStatus){std::string(reply->str, reply->len)};
             }
         }else if constexpr(std::is_same_v<T, RedisReplyString>){
-            if(reply->type != REDIS_REPLY_STRING){
+            if(reply->type == REDIS_REPLY_STRING){
                 return (RedisReplyString){std::string(reply->str, reply->len)};
             }
         }else if constexpr(std::is_same_v<T, RedisReplyStringArray>){
             RedisReplyStringArray res(reply->elements);
             bool flag = true;
             for(int i = 0; i < reply->elements; i++){
-                if(reply->element[i]->type != REDIS_REPLY_STRING){
+                if(reply->element[i]->type == REDIS_REPLY_STRING){
                     flag = false;
                     break;
                 }
