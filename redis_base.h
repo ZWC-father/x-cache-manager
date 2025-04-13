@@ -54,7 +54,7 @@ public:
               const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME,
               int cmd_t = CMD_TIME, int al_int = ALIVE_INTVL,
               int rt_int = RETRY_INTVL, int max_rt = MAX_RETRY);
-    ~RedisBase();
+    virtual ~RedisBase();
  
     void connect();
     void disconnect();

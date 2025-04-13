@@ -20,7 +20,7 @@ public:
 class SQLiteBase{
 public:
     SQLiteBase(const std::string& work_dir, const std::string& db_name);
-    ~SQLiteBase();
+    virtual ~SQLiteBase();
     bool open();
     
     int execute(const char* sql);//must be non-query and single-step sql
