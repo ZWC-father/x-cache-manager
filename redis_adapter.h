@@ -69,9 +69,6 @@ public:
         return vec;
     }
 
-    static const std::string serialize(){return "";}
-
-    static const bool deserialize(){return true;}
 
     template<typename T, typename... Args>
     static const std::string serialize(const T& first, const Args&... rest){
@@ -79,9 +76,9 @@ public:
     }
 
     template<typename T, typename... Args>
-    static const bool deserialize(const std::string& str, size_t& offset, T& first, Args&... rest){
-        if(!deserialize_impl(str, offset, first))return false;
-        return deserialize(str, offset, rest...);
+    static const bool deserialize(const std::string& str, T& first, Args&... rest){
+        size_t offset = 0;
+        return deserialize_all(str, offset, first, rest...);
     }
     
 private:
@@ -144,6 +141,8 @@ private:
         throw RedisError("command unexpected return type: " + std::to_string(reply->type)); 
     }
 
+    static const std::string serialize(){return "";}
+
     template<typename T>
     static const typename std::enable_if<std::is_same<T, int>::value, std::string>::type
     serialize_impl(const T& val){
@@ -185,6 +184,16 @@ private:
         buf[2] = (len >> 8) & 0xFF;
         buf[3] = len & 0xFF;
         return std::string(buf, 4) + str;
+    }
+    
+    static const bool deserialize_all(const std::string& str, size_t& offset){
+        return offset == str.size();
+    }
+    
+    template<typename T, typename... Args>
+    static const bool deserialize_all(const std::string& str, size_t& offset, T& first, Args&... rest){
+        if(!deserialize_impl(str, offset, first))return false;
+        return deserialize_all(str, offset, rest...);
     }
 
     template<typename T>
