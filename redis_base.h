@@ -65,26 +65,7 @@ public:
     //binary-safe: cmd is not binary-safe
 
     template<typename... Args>
-    Reply command_single(const char* cmd, Args&&... args){
-        return command_impl(cmd, std::forward<Args>(args)...);
-    }
-
-
-private:
-    std::shared_ptr<Logger> logger;
-    redisOptions redis_opt;
-    redisContext* redis_ctx;
-    
-    std::string host, source_addr;
-    int port;
-    timeval connect_tv, command_tv;
-    int alive_interval, max_tries;
-    std::chrono::milliseconds retry_interval;
-
-    std::string proc_error(int flag, const std::string& error_pre);
-
-    template<typename... Args>
-    Reply command_impl(const char* cmd, Args&&... args){
+    Reply command(const char* cmd, Args&&... args){
         redisReply* reply;
         for(int i = 1; i <= max_tries; i++){
             reply = static_cast<redisReply*>(redisCommand(redis_ctx, cmd,
@@ -108,5 +89,20 @@ private:
             logger->put_warn(LOG_ZONE_REDIS, "command retry: #", i);
         }
     }
+
+
+private:
+    std::shared_ptr<Logger> logger;
+    redisOptions redis_opt;
+    redisContext* redis_ctx;
+    
+    std::string host, source_addr;
+    int port;
+    timeval connect_tv, command_tv;
+    int alive_interval, max_tries;
+    std::chrono::milliseconds retry_interval;
+
+    std::string proc_error(int flag, const std::string& error_pre);
+
 
 };

@@ -8,7 +8,7 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
             if(logger_stdout == nullptr){
                 if(sink_stdout == nullptr){
                     sink_stdout = std::make_shared<spdlog::sinks::stdout_color_sink_st>();
-                    sink_stdout->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+                    sink_stdout->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%=8l%$] %v");
                     sink_stdout->set_color(spdlog::level::debug, "\033[32m");
                     sink_stdout->set_color(spdlog::level::info,  "\033[37m");
                     sink_stdout->set_color(spdlog::level::warn,  "\033[33m");
@@ -39,7 +39,7 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
             if(logger_stderr == nullptr){
                 if(sink_stderr == nullptr){
                     sink_stderr = std::make_shared<spdlog::sinks::stderr_color_sink_st>();
-                    sink_stderr->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
+                    sink_stderr->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%=8l%$] %v");
                     sink_stderr->set_color(spdlog::level::warn,  "\033[33m");
                     sink_stderr->set_color(spdlog::level::err,   "\033[31m");
                     sink_stderr->set_color(spdlog::level::critical, "\033[35m");
@@ -68,7 +68,7 @@ void Logger::setup(int logger, size_t buffer_size, const std::string& file_name,
                 if(sink_files == nullptr){
                     sink_files = std::make_shared<spdlog::sinks::rotating_file_sink_st>
                                  (file_name, rotating_size, rotating_nums);
-                    sink_files->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+                    sink_files->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%=8l] %v");
                 }
                  
                 if(pool_files == nullptr){

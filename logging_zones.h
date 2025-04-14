@@ -23,22 +23,22 @@ enum{
 };
 
 constexpr char* logging_prefix[] = {
-    "[main] ",
-    "[receiver] ",
-    "[parser] ",
-    "[conf_parser] ",
-    "[cleaner] ",
-    "[deleter] ",
-    "[purger] ",
-    "[monitor] ",
-    "[sqlite] ",
-    "[redis] ",
-    "[lru] ",
-    "[lfuda] ",
-    "[lru(sqlite)] ",
-    "[lfuda(sqlite)] ",
-    "[lru(redis)] ",
-    "[lfuda(redis)] "
+    "[     main     ] ",
+    "[   receiver   ] ",
+    "[    parser    ] ",
+    "[  conf_parser ] ",
+    "[    cleaner   ] ",
+    "[    deleter   ] ",
+    "[    purger    ] ",
+    "[    monitor   ] ",
+    "[    sqlite    ] ",
+    "[    redis     ] ",
+    "[     lru      ] ",
+    "[    lfuda     ] ",
+    "[ lru(sqlite)  ] ",
+    "[lfuda(sqlite) ] ",
+    "[  lru(redis)  ] ",
+    "[ lfuda(redis) ] "
 };
 
 #endif
