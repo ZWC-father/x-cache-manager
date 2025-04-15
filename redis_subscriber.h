@@ -1,8 +1,11 @@
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <format>
 #include <hiredis/read.h>
 #include <iostream>
 #include <iterator>
+#include <shared_mutex>
 #include <variant>
 #include <memory>
 #include <optional>
@@ -34,6 +37,15 @@
 #define CONN_TIME    1000
 #define ALIVE_INTVL  30000
 
+struct SubAUX{
+    std::condition_variable cv;
+    std::mutex event_lock;
+    std::atomic<int> connected; //1 = connected, 0 = disconnected, -1 = pending
+    std::shared_ptr<Logger> logger;
+    SubAUX(const std::shared_ptr<Logger>& l) : logger(l), connected(0) {}
+};
+
+SubAUX* sub_aux;
 
 class RedisError : public std::runtime_error{
 public:
@@ -41,25 +53,21 @@ public:
 };
 
 
-class RedisBase{
+class RedisSub{
 public:
     using ConnectCallBack = std::function<void(int)>;
     using DisconnectCallBack = std::function<void(int)>;
 
-    RedisBase(const std::shared_ptr<Logger>& l, ConnectCallBack con_cb, 
+    RedisSub(const std::shared_ptr<Logger>& l, ConnectCallBack con_cb, 
               DisconnectCallBack dcon_cb, const std::string& h, int p = PORT,
               const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME,
               int al_int = ALIVE_INTVL);
-    virtual ~RedisBase();
+    virtual ~RedisSub();
+            
 
-
-    
-    void connect(); 
-    std::atomic<bool> connected;
-    //no throw guarantee: this func will throw exception only if
-    //there is a connection/io issue (when the client can't get reply from server).
-    //binary-safe: cmd is not binary-safe
-
+    void connect();
+    void disconnect();
+    void blocking_disconnect();
 
 
 private:
@@ -69,8 +77,9 @@ private:
     redisAsyncContext* redis_ctx;
     event_base* base;
     
-    ConnectCallBack connect_callback;
-    DisconnectCallBack disconnect_callback;
+
+    static ConnectCallBack connect_callback;
+    static DisconnectCallBack disconnect_callback;
 
     
     std::string host, source_addr;
@@ -78,10 +87,9 @@ private:
     timeval connect_tv;
     int alive_interval;
 
-    
-
+    static void connect_cb(const redisAsyncContext* redis, int res);
+    static void disconnect_cb(const redisAsyncContext* redis, int res);
 
     std::string proc_error(int flag, const std::string& error_pre);
-
 
 };
