@@ -1,15 +1,20 @@
 #include "redis_subscriber.h"
 #include "logging_zones.h"
-#include <cstddef>
+#include <algorithm>
+#include <cstdio>
 #include <event2/event.h>
+#include <exception>
 #include <hiredis/async.h>
 #include <hiredis/read.h>
+#include <memory>
+#include <stdexcept>
+#include <thread>
 
-RedisSub::RedisSub(SubManager* manager, redisAsyncContext** ctx,
+RedisSub::RedisSub(SubManager* manager,
 const std::shared_ptr<Logger>& l, const std::string& h,
-int p, const std::string& src_a, int con_t) : redis_ctx(ctx),
+int p, const std::string& src_a, int con_t) : manager(manager),
 logger(l), host(h), port(p), source_addr(src_a),
-redis_opt({0}), base(NULL){
+redis_opt({0}){
     redis_opt.options |= REDIS_OPT_PREFER_IP_UNSPEC;
     REDIS_OPTIONS_SET_TCP(&redis_opt, host.c_str(), port);
     redis_opt.endpoint.tcp.source_addr = source_addr.c_str();
@@ -19,69 +24,85 @@ redis_opt({0}), base(NULL){
 
     base = event_base_new();
     if(base == NULL)throw RedisError("event_base creation failed");
-    *redis_ctx = NULL;
+    event_guard = evtimer_new(base, &RedisSub::dummy_cb, NULL);
+    if(event_guard == NULL)throw RedisError("event guard creation failed");
+    event_add(event_guard, &connect_tv);
 
-
+    manager->redis_ctx = NULL;
 }
 
 RedisSub::~RedisSub(){
     free();
+    if(event_guard != NULL)event_free(event_guard);
     if(base != NULL)event_base_free(base);
 }
 
 
-bool RedisSub::connect(){
-    if(*redis_ctx != NULL){
-        logger->put_warn(LOG_ZONE_REDIS, "connected before new connection");
-        free();
+int RedisSub::connect(){
+    if(manager->redis_ctx != NULL){
+        throw RedisError("context not null before new connection");
     }
     
     logger->put_info(LOG_ZONE_REDIS, "connecting...");
 
-    *redis_ctx = redisAsyncConnectWithOptions(&redis_opt);
+    manager->redis_ctx = redisAsyncConnectWithOptions(&redis_opt);
     
-    if(*redis_ctx == NULL){
+    if(manager->redis_ctx == NULL){
         logger->put_error(LOG_ZONE_REDIS, "connection error: failed to create async context");
-        return 0;
+        return -1;
     }
 
-    if((*redis_ctx)->err){
-        logger->put_error(LOG_ZONE_REDIS, "connection error: ", (*redis_ctx)->errstr);
-        redisAsyncFree(*redis_ctx);
-        *redis_ctx = NULL;
-        return 0;
+    if(manager->redis_ctx->err){
+        logger->put_error(LOG_ZONE_REDIS, "connection error: ",
+                          manager->redis_ctx->errstr);
+        int err = manager->redis_ctx->err;
+        free();
+        return err;
     }
 
-    *redis_ctx->data = (){redis_ctx, manager};
+    manager->redis_ctx->data = manager;
     
-    redisAsyncSetConnectCallback(*redis_ctx, &RedisSub::connect_cb);
-    redisAsyncSetDisconnectCallback(*redis_ctx, &RedisSub::disconnect_cb);
+    redisAsyncSetConnectCallback(manager->redis_ctx, &RedisSub::connect_cb);
+    redisAsyncSetDisconnectCallback(manager->redis_ctx, &RedisSub::disconnect_cb);
     
-    if(redisLibeventAttach(*redis_ctx, base) != REDIS_OK){
-        logger->put_error(LOG_ZONE_REDIS, "event_base attach error: ", (*redis_ctx)->errstr);  
-        redisAsyncFree(*redis_ctx);
-        *redis_ctx = NULL;
-        return 0;
+    if(redisLibeventAttach(manager->redis_ctx, base) != REDIS_OK){
+        logger->put_error(LOG_ZONE_REDIS, "event_base attach error: ",
+                          manager->redis_ctx->errstr);  
+        int err = manager->redis_ctx->err;
+        free();
+        return err;
     }
 
-    return 1;
+    return 0;
 
 }
 
 void RedisSub::disconnect(){
-    if(*redis_ctx == NULL)return;
-    redisAsyncDisconnect(*redis_ctx);
-    *redis_ctx = NULL;
+    if(manager->redis_ctx == NULL)return;
+    logger->put_info(LOG_ZONE_REDIS, "disconnecting...");
+    redisAsyncDisconnect(manager->redis_ctx);
+    manager->redis_ctx = NULL;
 }
 
 void RedisSub::free(){
-    if(*redis_ctx == NULL)return;
-    redisAsyncFree(*redis_ctx);
-    *redis_ctx = NULL;
+    if(manager->redis_ctx == NULL)return;
+    logger->put_info(LOG_ZONE_REDIS, "freeing...");
+    redisAsyncFree(manager->redis_ctx);
+    manager->redis_ctx = NULL;
 }
 
-void RedisSub::set_null(){
-    *redis_ctx = NULL;
+void RedisSub::run(){
+    event_base_dispatch(base);
+}
+
+int RedisSub::subscribe(const std::string& channel, RedisCallback callback,
+                        bool psub){
+    if(manager->redis_ctx == NULL)throw RedisError("redis context is null");
+    
+    const char* cmd = psub ? "PSUBSCRIBE %s" : "SUBSCRIBE %s";
+    int res = redisAsyncCommand(manager->redis_ctx, callback,
+                                manager, cmd);
+    return res;
 }
 
 void RedisSub::connect_cb(const redisAsyncContext* redis, int res){
@@ -95,6 +116,7 @@ void RedisSub::connect_cb(const redisAsyncContext* redis, int res){
         }else{
             msg = "connection error: " + std::string(redis->errstr);
         }
+        manager->redis_ctx = NULL;
     }
     
     manager->connect_callback(res, msg);
@@ -112,17 +134,88 @@ void RedisSub::disconnect_cb(const redisAsyncContext* redis, int res){
             msg =  "disconnection error: " +  std::string(redis->errstr);
         }
     }
-    
+
+    manager->redis_ctx = NULL;
     manager->disconnect_callback(res, msg);
 }
 
 
 SubManager::SubManager(const std::shared_ptr<Logger>& logger, const std::string& host,
-int port, const std::string& source_addr, int connect_timeout, int retry_interval) :
-logger(logger), host(host), port(port), source_addr(source_addr),
-connect_timeout(connect_timeout), retry_interval(retry_interval) {}
+int port, const std::string& source_addr, int connect_timeout, int max_retries,
+int retry_interval) : logger(logger), host(host), port(port), source_addr(source_addr),
+connect_timeout(connect_timeout), max_tries(max_retries + 1),
+retry_interval(retry_interval), redis_ctx(NULL), try_count(0){
+    redis = new RedisSub(this, logger, host,
+                         port, source_addr, connect_timeout);
+    fut = prom.get_future();
+    except_fut = except_prom.get_future();
+}
 
-void init(){
+void SubManager::init(){
+    event_loop = std::thread([this]{redis->run();});
+    connection_loop = std::thread(&SubManager::connection_manager, this);
+}
+
+void SubManager::uninit(){
+
+}
+
+void SubManager::wait(){
     
 }
 
+void SubManager::do_connect(){
+    if(!redis->connect()){
+        pending = false;
+        throw RedisError("connection init exception");
+    }
+    try_count++;
+    
+}
+
+void SubManager::connection_manager(){
+    while(1){
+        bool status = fut.get();
+        try{
+            if(status){
+                if(try_count == max_tries)throw RedisError("too many connection failures");
+                std::this_thread::sleep_for(retry_interval);
+                logger->put_info(LOG_ZONE_REDIS, "connecting retry #", try_count);
+                if(pending = )do_connect();
+            }else break;
+        }catch(...){
+            except_prom.set_exception(std::current_exception());
+        }
+    }
+}
+
+void SubManager::connect_callback(int res, const std::string& msg){
+    if(stop_signal){
+        logger->put_warn(LOG_ZONE_REDIS, "callback aborted, quiting...");
+        prom.set_value(false);
+        return;
+    }
+    
+    if(res == REDIS_OK)logger->put_info(LOG_ZONE_REDIS, msg);
+    else{
+        logger->put_error(LOG_ZONE_REDIS, msg);
+        prom.set_value(true);
+    }
+    
+}
+
+
+void SubManager::disconnect_callback(int res, const std::string& msg){
+    if(stop_signal){
+        logger->put_warn(LOG_ZONE_REDIS, "callback aborted, quiting...");
+        prom.set_value(false);
+        return;
+    }
+    
+    if(res == REDIS_OK)logger->put_info(LOG_ZONE_REDIS, msg);
+    else{
+        logger->put_error(LOG_ZONE_REDIS, msg);
+        prom.set_value(true);
+    }
+    
+}
