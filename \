@@ -1,0 +1,104 @@
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <format>
+#include <hiredis/read.h>
+#include <iostream>
+#include <iterator>
+#include <shared_mutex>
+#include <variant>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <mutex>
+#include <ratio>
+#include <stdexcept>
+#include <thread>
+#include <functional>
+#include <utility>
+#include <hiredis/hiredis.h>
+#include <hiredis/async.h>
+#include <hiredis/adapters/libevent.h>
+#include <event2/event.h>
+
+#include "logger.h"
+#include "logging_zones.h"
+
+#define CONTEXT_INIT_FAIL -1
+
+#define EXCEPT_NONE  0
+#define EXCEPT_PRINT 1
+#define EXCEPT_THROW 2
+#define EXCEPT_BOTH  3
+
+#define PORT         6379
+#define SRC_ADDR     "127.0.0.1"
+#define CONN_TIME    1000
+#define RETRY_INTVL  100
+
+
+class RedisError : public std::runtime_error{
+public:
+    explicit RedisError(const std::string& err) : std::runtime_error(err) {}
+};
+
+
+class RedisSub{
+public:
+    using ConnectCallBack = std::function<void(int)>;
+    using DisconnectCallBack = std::function<void(int)>;
+
+    RedisSub(const std::shared_ptr<Logger>& l, ConnectCallBack con_cb, 
+              DisconnectCallBack dcon_cb, const std::string& h, int p = PORT,
+              const std::string& src_a = SRC_ADDR, int con_t = CONN_TIME);
+    virtual ~RedisSub();
+            
+
+    void connect();
+    void disconnect();
+    void blocking_disconnect();
+
+
+private:
+    std::shared_ptr<Logger> logger;
+    
+    redisOptions redis_opt;
+    redisAsyncContext* redis_ctx;
+    event_base* base;
+    
+    std::condition_variable cv;
+    std::mutex event_lock;
+    std::atomic<int> connected; //1 = connected, 0 = disconnected, -1 = pending
+    
+
+    static ConnectCallBack connect_callback;
+    static DisconnectCallBack disconnect_callback;
+
+    
+    std::string host, source_addr;
+    int port;
+    timeval connect_tv;
+
+    static void connect_cb(const redisAsyncContext* redis, int res);
+    static void disconnect_cb(const redisAsyncContext* redis, int res);
+
+    std::string proc_error(int flag, const std::string& error_pre);
+
+};
+
+class SubManager : private RedisSub{
+public:
+    SubManager(const std::shared_ptr<Logger>& l, const std::string& h,
+               int p = PORT, const std::string& src_a = SRC_ADDR,
+               int con_t = CONN_TIME, int rt_int = RETRY_INTVL);
+    virtual ~SubManager();
+
+
+
+private:
+    std::shared_ptr<Logger> logger;
+    std::thread connection_manager;
+    std::thread event_loop;
+    
+};
