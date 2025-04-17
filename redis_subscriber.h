@@ -2,6 +2,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <format>
+#include <future>
 #include <hiredis/read.h>
 #include <iostream>
 #include <iterator>
@@ -22,14 +23,17 @@
 #include <hiredis/async.h>
 #include <hiredis/adapters/libevent.h>
 #include <event2/event.h>
+#include <vector>
 
 #include "logger.h"
 #include "logging_zones.h"
 
+#define CHANNEL "__keyevent@0__:evicted"
+#define PSUB false
+
 #define PORT         6379
 #define SRC_ADDR     "127.0.0.1"
 #define CONN_TIME    1000
-#define RETRY_INTVL  100
 
 class SubManager;
 
@@ -48,7 +52,6 @@ public:
 
     int connect();
     void disconnect();
-    void free();
 
     void run();
     int subscribe(const std::string& channel, RedisCallback callback,
@@ -61,51 +64,61 @@ private:
     
     std::shared_ptr<Logger> logger;
     event_base* base;
-    event* event_guard;
     redisOptions redis_opt;
     
     SubManager* manager;
     
+    void init();
+    void uninit();
+    void free();
+    
     static void connect_cb(const redisAsyncContext* redis_ctx, int res);
     static void disconnect_cb(const redisAsyncContext* redis_ctx, int res);
-    static void dummy_cb(evutil_socket_t fd, short what, void *arg) {}
 };
 
 
 class SubManager{
 public:
-    SubManager(const std::shared_ptr<Logger>& l, const std::string& host,
-               int port = PORT, const std::string& source_addr = SRC_ADDR,
-               int connect_timeout = CONN_TIME, int max_retries = RETRY_MAX,
-               int retry_interval = RETRY_INTVL);
-    ~SubManager();
+    struct RedisReplyStringArray {std::vector<std::string> vec;};
+    struct RedisReplyStatus {std::string str;};
+    struct RedisReplyError {std::string str;};
+    using Reply = std::variant<RedisReplyStringArray,
+                               RedisReplyStatus, RedisReplyError>;
+    using SubCallback = std::function<void(Reply)>;
     
+    SubManager(SubCallback sub_callback, const std::shared_ptr<Logger>& logger,
+               const std::string& host, int port = PORT,
+               const std::string& source_addr = SRC_ADDR,
+               int connect_timeout = CONN_TIME);
+    
+    std::shared_ptr<Logger> logger;
     redisAsyncContext* redis_ctx;
+    std::atomic<int> status;
 
     void init();
-    void uninit(); 
+    void uninit();
+    void connect();
+    int subscribe();
+    //you must call disconnect() and wait connect() for exit
 
     void connect_callback(int res, const std::string& msg);
     void disconnect_callback(int res, const std::string& msg);
+    static void command_callback(redisAsyncContext* ctx,
+                                 void* reply, void* privdata);
 
 private:
     std::string host, source_addr;
-    int port;
-    int connect_timeout, max_tries;
-    std::chrono::milliseconds retry_interval;
-    int try_count;
+    int port, connect_timeout;
+    SubCallback sub_callback;
 
-    std::shared_ptr<Logger> logger;
-    std::mutex manager_lock;
     std::condition_variable cv;
-    std::promise<bool> prom, except_prom;
-    std::future<bool> fut, except_fut;
-    std::atomic<bool> pending, stop_signal;
+    std::mutex connect_lock;
+    std::atomic<bool> running;
+
+    
+    //-1 = failure, 0 = nothing, 1 = connected
 
     RedisSub* redis;
-    std::thread connection_loop;
-    std::thread event_loop;
 
-    void do_connect();
-    void connection_manager();
+    void free();
 };

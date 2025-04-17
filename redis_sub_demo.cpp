@@ -1,9 +1,11 @@
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <hiredis/async.h>
 #include <hiredis/adapters/libevent.h>
 #include <event2/event.h>
+#include <thread>
 
 // 自定义异常类型
 class RedisException : public std::runtime_error {
@@ -43,6 +45,7 @@ public:
         // 注册连接和断开回调（可选）
         redisAsyncSetConnectCallback(_ac, connectCallback);
         redisAsyncSetDisconnectCallback(_ac, disconnectCallback);
+//        redisAsyncDisconnect(_ac);
     }
 
     // 析构函数，释放资源
@@ -125,18 +128,18 @@ int main() {
     try {
         // 构造订阅对象，连接到本地 Redis
         RedisSubscriber subscriber("127.0.0.1", 6379);
-        
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        subscriber.run();
         // 设置通知（注意：确保 Redis 服务器开启了 keyspace notifications，如 notify-keyspace-events Ex）
         // 订阅键过期事件（假设数据库 0）
-        subscriber.subscribe("__keyevent@0__:expired", myMessageCallback);
+//        subscriber.subscribe("__keyevent@0__:expired", myMessageCallback);
         // 订阅键被驱逐事件
-        subscriber.subscribe("__keyevent@0__:evicted", myMessageCallback);
+//        subscriber.subscribe("__keyevent@0__:evicted", myMessageCallback);
         
         // 你还可以继续订阅其他频道或模式
         // subscriber.subscribe("someOtherChannel", myMessageCallback);
 
         // 启动事件循环
-        subscriber.run();
     } catch(const std::exception &ex) {
         std::cerr << "Exception: " << ex.what() << std::endl;
         return -1;

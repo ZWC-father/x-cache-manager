@@ -1,20 +1,22 @@
 #include "redis_subscriber.h"
 #include "logging_zones.h"
-#include <algorithm>
+#include <cstddef>
 #include <cstdio>
+#include <cstdlib>
+#include <cwchar>
 #include <event2/event.h>
-#include <exception>
 #include <hiredis/async.h>
 #include <hiredis/read.h>
 #include <memory>
-#include <stdexcept>
-#include <thread>
+#include <mutex>
+#include <vector>
 
 RedisSub::RedisSub(SubManager* manager,
 const std::shared_ptr<Logger>& l, const std::string& h,
 int p, const std::string& src_a, int con_t) : manager(manager),
 logger(l), host(h), port(p), source_addr(src_a),
-redis_opt({0}){
+redis_opt({0}), base(NULL){
+    manager->redis_ctx = NULL;
     redis_opt.options |= REDIS_OPT_PREFER_IP_UNSPEC;
     REDIS_OPTIONS_SET_TCP(&redis_opt, host.c_str(), port);
     redis_opt.endpoint.tcp.source_addr = source_addr.c_str();
@@ -22,27 +24,24 @@ redis_opt({0}){
                   con_t % 1000 * 1000};
     redis_opt.connect_timeout = &connect_tv;
 
-    base = event_base_new();
-    if(base == NULL)throw RedisError("event_base creation failed");
-    event_guard = evtimer_new(base, &RedisSub::dummy_cb, NULL);
-    if(event_guard == NULL)throw RedisError("event guard creation failed");
-    event_add(event_guard, &connect_tv);
-
-    manager->redis_ctx = NULL;
+    init();
 }
 
 RedisSub::~RedisSub(){
-    free();
-    if(event_guard != NULL)event_free(event_guard);
+    uninit();
+}//disconnect must be called manually for a successful connection
+
+void RedisSub::init(){
+    if(base == NULL)base = event_base_new();
+    if(base == NULL)throw RedisError("event_base creation failed");
+}
+
+void RedisSub::uninit(){
+    manager->redis_ctx = NULL;
     if(base != NULL)event_base_free(base);
 }
 
-
 int RedisSub::connect(){
-    if(manager->redis_ctx != NULL){
-        throw RedisError("context not null before new connection");
-    }
-    
     logger->put_info(LOG_ZONE_REDIS, "connecting...");
 
     manager->redis_ctx = redisAsyncConnectWithOptions(&redis_opt);
@@ -60,10 +59,6 @@ int RedisSub::connect(){
         return err;
     }
 
-    manager->redis_ctx->data = manager;
-    
-    redisAsyncSetConnectCallback(manager->redis_ctx, &RedisSub::connect_cb);
-    redisAsyncSetDisconnectCallback(manager->redis_ctx, &RedisSub::disconnect_cb);
     
     if(redisLibeventAttach(manager->redis_ctx, base) != REDIS_OK){
         logger->put_error(LOG_ZONE_REDIS, "event_base attach error: ",
@@ -72,6 +67,10 @@ int RedisSub::connect(){
         free();
         return err;
     }
+    
+    manager->redis_ctx->data = manager;
+    redisAsyncSetConnectCallback(manager->redis_ctx, &RedisSub::connect_cb);
+    redisAsyncSetDisconnectCallback(manager->redis_ctx, &RedisSub::disconnect_cb);
 
     return 0;
 
@@ -81,12 +80,9 @@ void RedisSub::disconnect(){
     if(manager->redis_ctx == NULL)return;
     logger->put_info(LOG_ZONE_REDIS, "disconnecting...");
     redisAsyncDisconnect(manager->redis_ctx);
-    manager->redis_ctx = NULL;
 }
 
 void RedisSub::free(){
-    if(manager->redis_ctx == NULL)return;
-    logger->put_info(LOG_ZONE_REDIS, "freeing...");
     redisAsyncFree(manager->redis_ctx);
     manager->redis_ctx = NULL;
 }
@@ -101,7 +97,7 @@ int RedisSub::subscribe(const std::string& channel, RedisCallback callback,
     
     const char* cmd = psub ? "PSUBSCRIBE %s" : "SUBSCRIBE %s";
     int res = redisAsyncCommand(manager->redis_ctx, callback,
-                                manager, cmd);
+                                manager, cmd, channel.c_str());
     return res;
 }
 
@@ -116,7 +112,6 @@ void RedisSub::connect_cb(const redisAsyncContext* redis, int res){
         }else{
             msg = "connection error: " + std::string(redis->errstr);
         }
-        manager->redis_ctx = NULL;
     }
     
     manager->connect_callback(res, msg);
@@ -135,87 +130,139 @@ void RedisSub::disconnect_cb(const redisAsyncContext* redis, int res){
         }
     }
 
-    manager->redis_ctx = NULL;
     manager->disconnect_callback(res, msg);
 }
 
 
-SubManager::SubManager(const std::shared_ptr<Logger>& logger, const std::string& host,
-int port, const std::string& source_addr, int connect_timeout, int max_retries,
-int retry_interval) : logger(logger), host(host), port(port), source_addr(source_addr),
-connect_timeout(connect_timeout), max_tries(max_retries + 1),
-retry_interval(retry_interval), redis_ctx(NULL), try_count(0){
-    redis = new RedisSub(this, logger, host,
-                         port, source_addr, connect_timeout);
-    fut = prom.get_future();
-    except_fut = except_prom.get_future();
-}
+SubManager::SubManager(SubCallback sub_callback, const std::shared_ptr<Logger>& logger,
+const std::string& host, int port, const std::string& source_addr,
+int connect_timeout) : sub_callback(sub_callback), logger(logger), host(host),
+port(port), source_addr(source_addr), connect_timeout(connect_timeout),
+redis_ctx(NULL), redis(nullptr){}
 
 void SubManager::init(){
-    event_loop = std::thread([this]{redis->run();});
-    connection_loop = std::thread(&SubManager::connection_manager, this);
+    status = 0;
+    running = false;
+    redis = new RedisSub(this, logger, host,
+                         port, source_addr, connect_timeout);
 }
 
 void SubManager::uninit(){
-
-}
-
-void SubManager::wait(){
-    
-}
-
-void SubManager::do_connect(){
-    if(!redis->connect()){
-        pending = false;
-        throw RedisError("connection init exception");
-    }
-    try_count++;
-    
-}
-
-void SubManager::connection_manager(){
-    while(1){
-        bool status = fut.get();
-        try{
-            if(status){
-                if(try_count == max_tries)throw RedisError("too many connection failures");
-                std::this_thread::sleep_for(retry_interval);
-                logger->put_info(LOG_ZONE_REDIS, "connecting retry #", try_count);
-                if(pending = )do_connect();
-            }else break;
-        }catch(...){
-            except_prom.set_exception(std::current_exception());
-        }
-    }
-}
-
-void SubManager::connect_callback(int res, const std::string& msg){
-    if(stop_signal){
-        logger->put_warn(LOG_ZONE_REDIS, "callback aborted, quiting...");
-        prom.set_value(false);
+    std::unique_lock<std::mutex> lock(connect_lock);
+    if(redis == nullptr){
+        logger->put_error(LOG_ZONE_REDIS, "redis not initialized");
         return;
     }
     
-    if(res == REDIS_OK)logger->put_info(LOG_ZONE_REDIS, msg);
-    else{
-        logger->put_error(LOG_ZONE_REDIS, msg);
-        prom.set_value(true);
+    if(running){
+        redis->disconnect();
+        logger->put_info(LOG_ZONE_REDIS, "event loop exit");
+        cv.wait(lock);
+        free();
+    }else{
+        logger->put_warn(LOG_ZONE_REDIS, "event loop not running");
+        free();
+    }
+}
+
+void SubManager::free(){
+    delete redis;
+    redis = nullptr;
+    status = 0;
+}
+
+void SubManager::connect(){
+    std::unique_lock<std::mutex> lock(connect_lock);
+    if(redis == nullptr)return;
+    
+    running = true;
+    if(int res = redis->connect()){
+        running = false;
+        throw RedisError("connection init exception: " + std::to_string(res));
     }
     
+    lock.unlock();
+    redis->run();
+    lock.lock();
+
+    if(status == -1){
+        running = false;
+        cv.notify_one();
+        throw RedisError("connection exception");
+    }
+    running = false;
+    cv.notify_one();
+}
+
+int SubManager::subscribe(){
+    std::unique_lock<std::mutex> lock(connect_lock);
+    if(redis == nullptr){
+        logger->put_error(LOG_ZONE_REDIS, "redis not initialized");
+        return -1;
+    }
+    
+    return redis->subscribe(CHANNEL, command_callback, PSUB);
+    
+    
+}
+
+void SubManager::connect_callback(int res, const std::string& msg){
+    if(res == REDIS_OK){
+        logger->put_info(LOG_ZONE_REDIS, msg);
+        status = 1;
+    }else{
+        logger->put_error(LOG_ZONE_REDIS, msg);
+        status = -1;
+    }
 }
 
 
 void SubManager::disconnect_callback(int res, const std::string& msg){
-    if(stop_signal){
-        logger->put_warn(LOG_ZONE_REDIS, "callback aborted, quiting...");
-        prom.set_value(false);
-        return;
-    }
-    
-    if(res == REDIS_OK)logger->put_info(LOG_ZONE_REDIS, msg);
-    else{
+    if(res == REDIS_OK){
+        logger->put_info(LOG_ZONE_REDIS, msg);
+        status = 0;
+    }else{
         logger->put_error(LOG_ZONE_REDIS, msg);
-        prom.set_value(true);
+        status = -1;
     }
+}
+
+void SubManager::command_callback(redisAsyncContext *ctx,
+                                  void *r, void *privdata){
+    if(r == NULL)return;
+    auto reply = static_cast<redisReply*>(r);
+    auto manager = static_cast<SubManager*>(privdata);
+    if(reply->type == REDIS_REPLY_ERROR){
+        manager->sub_callback((RedisReplyError)
+                              {std::string(reply->str, reply->len)});
+  
+    }else if(reply->type == REDIS_REPLY_STATUS){
+        manager->sub_callback((RedisReplyStatus)
+                              {std::string(reply->str, reply->len)});
+
+    }else if(reply->type == REDIS_REPLY_STRING){
+        manager->sub_callback((RedisReplyStringArray)
+                {{std::string(reply->str, reply->len)}});
     
+    }else if(reply->type == REDIS_REPLY_ARRAY){
+        std::vector<std::string> vec(reply->elements);
+        for(size_t i = 0; i < reply->elements; i++){
+            if(reply->element[i]->type == REDIS_REPLY_INTEGER){
+                vec[i] = std::to_string(reply->element[i]->integer);
+            }else if(reply->element[i]->type == REDIS_REPLY_STRING){
+                vec[i] = std::string(reply->element[i]->str,
+                                     reply->element[i]->len);
+
+            }else{
+                manager->logger->put_error(LOG_ZONE_REDIS,
+                        "unknown reply type from subscriber(array): ",
+                        reply->element[i]->type);
+                return;
+            }
+        }
+        manager->sub_callback((RedisReplyStringArray){vec});
+    }else{
+        manager->logger->put_error(LOG_ZONE_REDIS,
+                "unknown reply type from subscriber: ", reply->type);
+    }
 }
