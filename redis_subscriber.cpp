@@ -255,7 +255,7 @@ void SubManager::command_callback(redisAsyncContext *ctx,
 
             }else{
                 manager->logger->put_error(LOG_ZONE_REDIS,
-                        "unknown reply type from subscriber(array): ",
+                        "unknown reply type from redis(array): ",
                         reply->element[i]->type);
                 return;
             }
@@ -263,6 +263,6 @@ void SubManager::command_callback(redisAsyncContext *ctx,
         manager->sub_callback((RedisReplyStringArray){vec});
     }else{
         manager->logger->put_error(LOG_ZONE_REDIS,
-                "unknown reply type from subscriber: ", reply->type);
+                "unknown reply type from redis: ", reply->type);
     }
 }

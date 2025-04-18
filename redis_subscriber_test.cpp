@@ -31,7 +31,7 @@ int main(){
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     logger->put_info(LOG_ZONE_MAIN, "sub status: ", manager->subscribe());
-    std::this_thread::sleep_for(std::chrono::milliseconds(20000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(40000));
     manager->uninit();
     delete manager;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
