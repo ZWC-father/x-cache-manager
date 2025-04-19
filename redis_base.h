@@ -1,3 +1,6 @@
+#ifndef REDIS_BASE_H
+#define REDIS_BASE_H
+
 #include <chrono>
 #include <format>
 #include <hiredis/read.h>
@@ -32,7 +35,7 @@
 #define RETRY_INTVL  200
 #define MAX_RETRY    3
 
-
+#define REDIS_ERROR
 class RedisError : public std::runtime_error{
 public:
     explicit RedisError(const std::string& err) : std::runtime_error(err) {}
@@ -106,3 +109,5 @@ private:
 
 
 };
+
+#endif

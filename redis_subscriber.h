@@ -37,10 +37,13 @@
 
 class SubManager;
 
+#ifndef REDIS_ERROR
+#define REDIS_ERROR
 class RedisError : public std::runtime_error{
 public:
     explicit RedisError(const std::string& err) : std::runtime_error(err) {}
 };
+#endif
 
 
 class RedisSub{
