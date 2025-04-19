@@ -22,7 +22,7 @@ enum{
      LOG_ZONE_LFUDA_REDIS,
 };
 
-constexpr char* logging_prefix[] = {
+const char* const logging_prefix[] = {
     "[     main     ] ",
     "[   receiver   ] ",
     "[    parser    ] ",

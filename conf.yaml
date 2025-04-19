@@ -1,0 +1,7 @@
+redis:
+  host: "127.0.0.1"
+  timeout:
+    - 1000
+    - 2000
+sqlite:
+  path: "cache.db"
