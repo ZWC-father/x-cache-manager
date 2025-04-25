@@ -47,7 +47,7 @@ public:
 
     int insert_lru(const CacheLRU& entry){ //
         return execute(SQL_INSERT_LRU, entry.key, entry.size, entry.download_time,
-                entry.hash, entry.sequence);
+               entry.hash, entry.sequence);
     }
 
     int insert_meta(const MetaLRU& entry){

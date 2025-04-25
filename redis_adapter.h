@@ -3,6 +3,7 @@
 #include "redis_base.h"
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <hiredis/hiredis.h>
 #include <hiredis/read.h>
 #include <memory>
@@ -17,10 +18,29 @@ class RedisAdapter : private RedisBase{
 public:
     struct RedisReplyError{std::string str;};
     struct RedisReplyNil{};
-    struct RedisReplyStatus{std::string str;};
-    struct RedisReplyInteger{int64_t val;};
-    struct RedisReplyDouble{double val; std::string str;};
-    struct RedisReplyString{std::string str;};
+    struct RedisReplyStatus{
+        std::string str;
+        RedisReplyStatus(const std::string& str) : str(str) {}
+        bool operator==(const RedisReplyStatus& other){return other.str == str;}
+    };
+    struct RedisReplyInteger{
+        int64_t val;
+        RedisReplyInteger(int64_t val) : val(val) {}
+        bool operator==(const RedisReplyInteger& other){return other.val == val;}
+    };
+    struct RedisReplyDouble{
+        double val;
+        std::string str;
+        RedisReplyDouble(double val) : val(val) {}
+        RedisReplyDouble(const std::string& str) : str(str) {}
+        RedisReplyDouble(double val, const std::string& str) : val(val), str(str) {}
+        bool operator==(const RedisReplyDouble& other){return other.val == val || other.str == str;}
+    };
+    struct RedisReplyString{
+        std::string str;
+        RedisReplyString(const std::string& str) : str(str) {}
+        bool operator==(const RedisReplyString& other){return other.str == str;}
+    };
 
     //struct RedisReplyUnexpected{int type;};
 
